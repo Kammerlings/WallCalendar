@@ -70,12 +70,11 @@ export default function Home() {
                   📅
                 </div>
               </div>
-              <h1 className="text-balance" style={{ fontFamily: 'var(--font-display)' }}>
+              <h1 className="text-5xl font-bold text-balance" style={{ fontFamily: 'var(--font-display)' }}>
                 Wall Calendar
               </h1>
               <p
                 className="text-lg text-[var(--foreground-muted)] text-pretty max-w-md mx-auto"
-                style={{ fontFamily: 'var(--font-body)' }}
               >
                 View two Google Calendars side-by-side. Perfect for managing work and personal schedules, or coordinating with your team.
               </p>
@@ -96,7 +95,7 @@ export default function Home() {
               <div className="space-y-6">
                 <div className="space-y-2">
                   <h2
-                    className="text-2xl font-semibold"
+                    className="text-2xl font-bold"
                     style={{ fontFamily: 'var(--font-display)' }}
                   >
                     Get Started
@@ -226,8 +225,8 @@ export default function Home() {
                 📅
               </div>
               <h1
-                className="text-xl sm:text-2xl font-semibold"
-                style={{ fontFamily: 'var(--font-body)' }}
+                className="text-xl sm:text-2xl font-bold"
+                style={{ fontFamily: 'var(--font-display)' }}
               >
                 Wall Calendar
               </h1>

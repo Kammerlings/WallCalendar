@@ -117,7 +117,7 @@ export default function DualCalendar() {
         return newDate;
       });
       setTimeout(() => setIsTransitioning(false), 50);
-    }, 200);
+    }, 50);
   };
 
   const goToToday = () => {
@@ -125,7 +125,7 @@ export default function DualCalendar() {
     setTimeout(() => {
       setCurrentDate(new Date());
       setTimeout(() => setIsTransitioning(false), 50);
-    }, 200);
+    }, 50);
   };
 
   const handleViewChange = (newView: "week" | "month") => {
@@ -134,7 +134,7 @@ export default function DualCalendar() {
       setTimeout(() => {
         setView(newView);
         setTimeout(() => setIsTransitioning(false), 50);
-      }, 200);
+      }, 50);
     }
   };
 
@@ -145,7 +145,9 @@ export default function DualCalendar() {
   const getDaysInWeek = (date: Date) => {
     const dayOfWeek = date.getDay();
     const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() - dayOfWeek);
+    // Set to Monday of the week (day 0 = Sunday, day 1 = Monday)
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    weekStart.setDate(date.getDate() - daysFromMonday);
 
     const days: Date[] = [];
     for (let i = 0; i < 7; i++) {
@@ -231,59 +233,24 @@ export default function DualCalendar() {
 
   const hours = Array.from({ length: 16 }, (_, i) => i + 6); // 6 AM to 10 PM
 
+  const getWeekNumber = (date: Date): number => {
+    // ISO 8601 week number calculation
+    const target = new Date(date.valueOf());
+    const dayNumber = (date.getDay() + 6) % 7; // Make Monday = 0, Sunday = 6
+    target.setDate(target.getDate() - dayNumber + 3); // Set to nearest Thursday
+    const firstThursday = new Date(target.getFullYear(), 0, 4); // January 4th is always in week 1
+    const weekNumber = 1 + Math.round(((target.getTime() - firstThursday.getTime()) / 86400000 - 3 + (firstThursday.getDay() + 6) % 7) / 7);
+    return weekNumber;
+  };
+
   const days = view === "week" ? getDaysInWeek(currentDate) : getDaysInMonth(currentDate);
   const title =
     view === "week"
-      ? `Week of ${days[0]?.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}`
+      ? `Week ${getWeekNumber(currentDate)}, ${currentDate.getFullYear()}`
       : currentDate.toLocaleDateString("en-US", {
           month: "long",
           year: "numeric",
         });
-
-  if (loading) {
-    return (
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div className="max-w-[1800px] mx-auto space-y-6">
-          {/* Header skeleton */}
-          <div
-            className="rounded-xl p-6"
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="h-8 w-48 loading-shimmer rounded" />
-              <div className="flex gap-2 flex-wrap">
-                <div className="h-10 w-20 loading-shimmer rounded" />
-                <div className="h-10 w-24 loading-shimmer rounded" />
-                <div className="h-10 w-20 loading-shimmer rounded" />
-              </div>
-            </div>
-          </div>
-
-          {/* Calendar skeleton */}
-          <div
-            className="rounded-xl p-6"
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-20 loading-shimmer rounded" />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (error) {
     return (
@@ -365,7 +332,7 @@ export default function DualCalendar() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <h2
                 className="text-2xl sm:text-3xl font-bold"
-                style={{ fontFamily: "var(--font-body)" }}
+                style={{ fontFamily: "var(--font-display)" }}
               >
                 {title}
               </h2>
@@ -581,12 +548,12 @@ export default function DualCalendar() {
 
         {/* Calendar Grid */}
         <div
-          className="rounded-xl overflow-hidden"
+          className="rounded-xl overflow-hidden relative"
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
             boxShadow: "var(--shadow-lg)",
-            transition: "opacity var(--transition-base), transform var(--transition-base)",
+            transition: "opacity 150ms ease-out, transform 150ms ease-out",
             opacity: isTransitioning ? 0 : 1,
             transform: isTransitioning ? "scale(0.98)" : "scale(1)",
           }}
@@ -635,7 +602,7 @@ function WeekView({
         {/* Header */}
         <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-[var(--border)]">
           <div style={{ background: "var(--border-subtle)" }} />
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayName, i) => {
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((dayName, i) => {
             const day = days[i];
             const isToday = day.toDateString() === today;
 
@@ -672,12 +639,12 @@ function WeekView({
           {(() => {
             // Calculate required height first
             const renderedEvents = new Set<string>();
-            const eventLayers: CalendarEvent[][] = [];
+            const eventLayers: Array<Array<{event: CalendarEvent, startIdx: number, endIdx: number}>> = [];
 
             days.forEach((day: Date) => {
               const dayEvents = getEventsForDay(day, primaryEvents).allDay;
 
-              dayEvents.forEach((event) => {
+              dayEvents.forEach((event: CalendarEvent) => {
                 if (renderedEvents.has(event.id)) return;
                 renderedEvents.add(event.id);
 
@@ -689,16 +656,19 @@ function WeekView({
                 const displayStart = eventStart < weekStart ? weekStart : eventStart;
                 const displayEnd = eventEnd > weekEnd ? weekEnd : new Date(eventEnd.getTime() - 86400000);
 
-                const startIdx = days.findIndex(d => d.toDateString() === displayStart.toDateString());
-                const endIdx = days.findIndex(d => d.toDateString() === displayEnd.toDateString());
+                const startIdx = days.findIndex((d: Date) => d.toDateString() === displayStart.toDateString());
+                const endIdx = days.findIndex((d: Date) => d.toDateString() === displayEnd.toDateString());
 
                 if (startIdx >= 0 && endIdx >= 0) {
+                  // Find a layer where this event doesn't overlap with existing events
                   let layerIdx = 0;
-                  while (eventLayers[layerIdx]?.some(() => true)) {
+                  while (eventLayers[layerIdx]?.some((e: {event: CalendarEvent, startIdx: number, endIdx: number}) => 
+                    !(endIdx < e.startIdx || startIdx > e.endIdx)
+                  )) {
                     layerIdx++;
                   }
                   if (!eventLayers[layerIdx]) eventLayers[layerIdx] = [];
-                  eventLayers[layerIdx].push(event);
+                  eventLayers[layerIdx].push({event, startIdx, endIdx});
                 }
               });
             });
@@ -708,90 +678,54 @@ function WeekView({
 
             return (
               <>
-                <div className="grid grid-cols-[60px_repeat(7,1fr)]">
+                <div className="grid grid-cols-[60px_repeat(7,1fr)]" style={{ minHeight: `${rowHeight}px` }}>
                   <div
-                    className="px-2 py-2 text-xs text-right text-[var(--foreground-muted)]"
-                    style={{ background: "var(--border-subtle)", minHeight: `${rowHeight}px` }}
+                    className="flex items-center justify-center"
+                    style={{ background: "var(--border-subtle)" }}
                   >
-                    <div className="flex items-center justify-end gap-1">
-                      <div
-                        className="w-2 h-2 rounded-sm"
-                        style={{ background: calendars[0].color }}
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">{calendars[0].name}</span>
-                    </div>
+                    <div
+                      className="w-4 h-4 rounded"
+                      style={{ background: calendars[0].color }}
+                      aria-label={calendars[0].name}
+                      title={calendars[0].name}
+                    />
                   </div>
                   {days.map((day: Date, dayIdx: number) => (
                     <div
                       key={`primary-allday-${dayIdx}`}
-                      className="border-l border-[var(--border)]"
-                      style={{ minHeight: `${rowHeight}px` }}
-                    />
-                  ))}
-                </div>
-                <div className="absolute top-0 left-[60px] right-0 bottom-0 p-1">
-                  <div className="relative" style={{ minHeight: `${rowHeight - 8}px` }}>
-                    {(() => {
-                      const renderedEvents2 = new Set<string>();
-                      const eventLayers2: CalendarEvent[][] = [];
-                      const eventElements: JSX.Element[] = [];
-
-                      days.forEach((day: Date) => {
-                        const dayEvents = getEventsForDay(day, primaryEvents).allDay;
-
-                        dayEvents.forEach((event) => {
-                          if (renderedEvents2.has(event.id)) return;
-                          renderedEvents2.add(event.id);
-
-                          const eventStart = new Date(event.start.split("T")[0]);
-                          const eventEnd = new Date(event.end.split("T")[0]);
-                          const weekStart = days[0];
-                          const weekEnd = days[6];
-
-                          const displayStart = eventStart < weekStart ? weekStart : eventStart;
-                          const displayEnd = eventEnd > weekEnd ? weekEnd : new Date(eventEnd.getTime() - 86400000);
-
-                          const startIdx = days.findIndex(d => d.toDateString() === displayStart.toDateString());
-                          const endIdx = days.findIndex(d => d.toDateString() === displayEnd.toDateString());
-
-                          if (startIdx >= 0 && endIdx >= 0) {
-                            let layerIdx = 0;
-                            while (eventLayers2[layerIdx]?.some(() => true)) {
-                              layerIdx++;
-                            }
-                            if (!eventLayers2[layerIdx]) eventLayers2[layerIdx] = [];
-                            eventLayers2[layerIdx].push(event);
-
-                            const width = ((endIdx - startIdx + 1) / 7) * 100;
-                            const left = (startIdx / 7) * 100;
-
-                            eventElements.push(
+                      className="border-l border-[var(--border)] relative p-1"
+                    >
+                      {eventLayers.map((layer, layerIdx) => 
+                        layer
+                          .filter(({startIdx, endIdx}) => dayIdx >= startIdx && dayIdx <= endIdx)
+                          .map(({event, startIdx, endIdx}) => {
+                            if (startIdx !== dayIdx) return null;
+                            const span = endIdx - startIdx + 1;
+                            return (
                               <div
                                 key={event.id}
-                                className="absolute rounded px-1.5 py-0.5 overflow-hidden cursor-pointer"
+                                className="rounded px-1.5 py-0.5 overflow-hidden cursor-pointer mb-0.5"
                                 style={{
                                   background: calendars[0].lightColor,
                                   color: "var(--foreground)",
                                   fontSize: "11px",
                                   borderLeft: `3px solid ${calendars[0].color}`,
-                                  left: `${left}%`,
-                                  width: `calc(${width}% - 8px)`,
-                                  top: `${layerIdx * 24}px`,
+                                  position: "absolute",
+                                  left: "4px",
+                                  right: span > 1 ? `calc(${(7 - dayIdx - span) / 7 * 100}% + 4px)` : "4px",
+                                  top: `${4 + layerIdx * 24}px`,
                                   height: "20px",
+                                  width: span > 1 ? `calc(${span / 7 * 100}% - 8px)` : "calc(100% - 8px)",
                                 }}
                                 title={`${event.title} (All day)`}
                               >
                                 <div className="font-semibold truncate">{event.title}</div>
                               </div>
                             );
-                          }
-                        });
-                      });
-
-                      return eventElements;
-                    })()}
-                  </div>
+                          })
+                      )}
+                    </div>
+                  ))}
                 </div>
               </>
             );
@@ -800,98 +734,107 @@ function WeekView({
 
         {/* Secondary calendar all-day events row */}
         <div className="relative border-b border-[var(--border)]">
-          <div className="grid grid-cols-[60px_repeat(7,1fr)]">
-            <div
-              className="px-2 py-2 text-xs text-right text-[var(--foreground-muted)]"
-              style={{ background: "var(--border-subtle)" }}
-            >
-              <div className="flex items-center justify-end gap-1">
-                <div
-                  className="w-2 h-2 rounded-sm"
-                  style={{ background: calendars[1].color }}
-                  aria-hidden="true"
-                />
-                <span className="truncate">{calendars[1].name}</span>
-              </div>
-            </div>
-            {days.map((day: Date, dayIdx: number) => (
-              <div
-                key={`secondary-allday-${dayIdx}`}
-                className="border-l border-[var(--border)]"
-                style={{ minHeight: "32px" }}
-              />
-            ))}
-          </div>
-          <div className="absolute top-0 left-[60px] right-0 bottom-0 p-1">
-            <div className="relative" style={{ minHeight: "30px" }}>
-              {(() => {
-                const renderedEvents = new Set<string>();
-                const eventLayers: CalendarEvent[][] = [];
-                const eventElements: JSX.Element[] = [];
+          {(() => {
+            // Calculate required height first
+            const renderedEvents = new Set<string>();
+            const eventLayers: Array<Array<{event: CalendarEvent, startIdx: number, endIdx: number}>> = [];
 
-                days.forEach((day: Date, dayIdx: number) => {
-                  const dayEvents = getEventsForDay(day, secondaryEvents).allDay;
+            days.forEach((day: Date) => {
+              const dayEvents = getEventsForDay(day, secondaryEvents).allDay;
 
-                  dayEvents.forEach((event) => {
-                    if (renderedEvents.has(event.id)) return;
-                    renderedEvents.add(event.id);
+              dayEvents.forEach((event: CalendarEvent) => {
+                if (renderedEvents.has(event.id)) return;
+                renderedEvents.add(event.id);
 
-                    const eventStart = new Date(event.start.split("T")[0]);
-                    const eventEnd = new Date(event.end.split("T")[0]);
-                    const weekStart = days[0];
-                    const weekEnd = days[6];
+                const eventStart = new Date(event.start.split("T")[0]);
+                const eventEnd = new Date(event.end.split("T")[0]);
+                const weekStart = days[0];
+                const weekEnd = days[6];
 
-                    const displayStart = eventStart < weekStart ? weekStart : eventStart;
-                    const displayEnd = eventEnd > weekEnd ? weekEnd : new Date(eventEnd.getTime() - 86400000);
+                const displayStart = eventStart < weekStart ? weekStart : eventStart;
+                const displayEnd = eventEnd > weekEnd ? weekEnd : new Date(eventEnd.getTime() - 86400000);
 
-                    const startIdx = days.findIndex(d => d.toDateString() === displayStart.toDateString());
-                    const endIdx = days.findIndex(d => d.toDateString() === displayEnd.toDateString());
+                const startIdx = days.findIndex((d: Date) => d.toDateString() === displayStart.toDateString());
+                const endIdx = days.findIndex((d: Date) => d.toDateString() === displayEnd.toDateString());
 
-                    if (startIdx >= 0 && endIdx >= 0) {
-                      let layerIdx = 0;
-                      while (eventLayers[layerIdx]?.some(() => true)) {
-                        layerIdx++;
-                      }
-                      if (!eventLayers[layerIdx]) eventLayers[layerIdx] = [];
-                      eventLayers[layerIdx].push(event);
+                if (startIdx >= 0 && endIdx >= 0) {
+                  // Find a layer where this event doesn't overlap with existing events
+                  let layerIdx = 0;
+                  while (eventLayers[layerIdx]?.some((e: {event: CalendarEvent, startIdx: number, endIdx: number}) => 
+                    !(endIdx < e.startIdx || startIdx > e.endIdx)
+                  )) {
+                    layerIdx++;
+                  }
+                  if (!eventLayers[layerIdx]) eventLayers[layerIdx] = [];
+                  eventLayers[layerIdx].push({event, startIdx, endIdx});
+                }
+              });
+            });
 
-                      const width = ((endIdx - startIdx + 1) / 7) * 100;
-                      const left = (startIdx / 7) * 100;
+            const numLayers = eventLayers.length;
+            const rowHeight = Math.max(32, numLayers * 24 + 8);
 
-                      eventElements.push(
-                        <div
-                          key={event.id}
-                          className="absolute rounded px-1.5 py-0.5 overflow-hidden cursor-pointer"
-                          style={{
-                            background: calendars[1].lightColor,
-                            color: "var(--foreground)",
-                            fontSize: "11px",
-                            borderLeft: `3px solid ${calendars[1].color}`,
-                            left: `${left}%`,
-                            width: `calc(${width}% - 8px)`,
-                            top: `${layerIdx * 24}px`,
-                            height: "20px",
-                          }}
-                          title={`${event.title} (All day)`}
-                        >
-                          <div className="font-semibold truncate">{event.title}</div>
-                        </div>
-                      );
-                    }
-                  });
-                });
-
-                return eventElements;
-              })()}
-            </div>
-          </div>
+            return (
+              <>
+                <div className="grid grid-cols-[60px_repeat(7,1fr)]" style={{ minHeight: `${rowHeight}px` }}>
+                  <div
+                    className="flex items-center justify-center"
+                    style={{ background: "var(--border-subtle)" }}
+                  >
+                    <div
+                      className="w-4 h-4 rounded"
+                      style={{ background: calendars[1].color }}
+                      aria-label={calendars[1].name}
+                      title={calendars[1].name}
+                    />
+                  </div>
+                  {days.map((day: Date, dayIdx: number) => (
+                    <div
+                      key={`secondary-allday-${dayIdx}`}
+                      className="border-l border-[var(--border)] relative p-1"
+                    >
+                      {eventLayers.map((layer, layerIdx) => 
+                        layer
+                          .filter(({startIdx, endIdx}) => dayIdx >= startIdx && dayIdx <= endIdx)
+                          .map(({event, startIdx, endIdx}) => {
+                            if (startIdx !== dayIdx) return null;
+                            const span = endIdx - startIdx + 1;
+                            return (
+                              <div
+                                key={event.id}
+                                className="rounded px-1.5 py-0.5 overflow-hidden cursor-pointer mb-0.5"
+                                style={{
+                                  background: calendars[1].lightColor,
+                                  color: "var(--foreground)",
+                                  fontSize: "11px",
+                                  borderLeft: `3px solid ${calendars[1].color}`,
+                                  position: "absolute",
+                                  left: "4px",
+                                  right: span > 1 ? `calc(${(7 - dayIdx - span) / 7 * 100}% + 4px)` : "4px",
+                                  top: `${4 + layerIdx * 24}px`,
+                                  height: "20px",
+                                  width: span > 1 ? `calc(${span / 7 * 100}% - 8px)` : "calc(100% - 8px)",
+                                }}
+                                title={`${event.title} (All day)`}
+                              >
+                                <div className="font-semibold truncate">{event.title}</div>
+                              </div>
+                            );
+                          })
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* Time Grid */}
         <div className="grid grid-cols-[60px_repeat(7,1fr)]">
           {/* Hours column */}
           <div>
-            {hours.map((hour) => (
+            {hours.map((hour: number) => (
               <div
                 key={hour}
                 className="h-16 px-2 py-1 text-xs text-right text-[var(--foreground-muted)] border-b border-[var(--border-subtle)]"
@@ -918,7 +861,7 @@ function WeekView({
                 }}
               >
                 {/* Hour lines */}
-                {hours.map((hour, hourIdx) => (
+                {hours.map((hour: number, hourIdx: number) => (
                   <div
                     key={hour}
                     className="h-16 border-b border-[var(--border-subtle)]"

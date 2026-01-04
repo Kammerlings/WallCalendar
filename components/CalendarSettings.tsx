@@ -96,7 +96,7 @@ export default function CalendarSettings({
           }}
         >
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-body)" }}>
+            <h2 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
               Calendar Settings
             </h2>
             <button
