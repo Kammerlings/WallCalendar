@@ -3,10 +3,12 @@
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useState } from "react";
 import DualCalendar from "@/components/DualCalendar";
+import CalendarNav from "@/components/CalendarNav";
 
 export default function Home() {
   const { data: session, status } = useSession();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [navProps, setNavProps] = useState<any>(null);
 
   const handleSignIn = async () => {
     setIsSigningIn(true);
@@ -233,7 +235,8 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-3 sm:gap-4">
-              <span className="hidden sm:inline text-sm text-[var(--foreground-muted)] truncate max-w-[200px]">
+              {navProps && <CalendarNav {...navProps} />}
+              <span className="hidden lg:inline text-sm text-[var(--foreground-muted)] truncate max-w-[200px]">
                 {session.user?.email}
               </span>
               <button
@@ -271,7 +274,7 @@ export default function Home() {
 
       {/* Main content */}
       <main className="flex-1">
-        <DualCalendar />
+        <DualCalendar navInHeader={true} onNavPropsChange={setNavProps} />
       </main>
     </div>
   );

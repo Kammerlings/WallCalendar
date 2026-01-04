@@ -14,6 +14,8 @@ interface CalendarSettingsProps {
   onClose: () => void;
   calendars: CalendarConfig[];
   onSave: (calendars: CalendarConfig[]) => void;
+  useGoogleColors: boolean;
+  onUseGoogleColorsChange: (value: boolean) => void;
 }
 
 export default function CalendarSettings({
@@ -21,35 +23,49 @@ export default function CalendarSettings({
   onClose,
   calendars,
   onSave,
+  useGoogleColors,
+  onUseGoogleColorsChange,
 }: CalendarSettingsProps) {
   const [primaryId, setPrimaryId] = useState(calendars[0]?.id || "primary");
   const [primaryName, setPrimaryName] = useState(calendars[0]?.name || "Primary Calendar");
+  const [primaryColor, setPrimaryColor] = useState(calendars[0]?.color || "#f59e0b");
   const [secondaryId, setSecondaryId] = useState(calendars[1]?.id || "");
   const [secondaryName, setSecondaryName] = useState(calendars[1]?.name || "Secondary Calendar");
+  const [secondaryColor, setSecondaryColor] = useState(calendars[1]?.color || "#78716c");
   const [mouseDownTarget, setMouseDownTarget] = useState<EventTarget | null>(null);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setPrimaryId(calendars[0]?.id || "primary");
       setPrimaryName(calendars[0]?.name || "Primary Calendar");
+      setPrimaryColor(calendars[0]?.color || "#f59e0b");
       setSecondaryId(calendars[1]?.id || "");
       setSecondaryName(calendars[1]?.name || "Secondary Calendar");
+      setSecondaryColor(calendars[1]?.color || "#78716c");
     }
   }, [isOpen, calendars]);
+
+  const hexToRgba = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
 
   const handleSave = () => {
     const updatedCalendars: CalendarConfig[] = [
       {
         id: primaryId,
         name: primaryName,
-        color: calendars[0].color,
-        lightColor: calendars[0].lightColor,
+        color: primaryColor,
+        lightColor: hexToRgba(primaryColor, 0.15),
       },
       {
         id: secondaryId,
         name: secondaryName,
-        color: calendars[1].color,
-        lightColor: calendars[1].lightColor,
+        color: secondaryColor,
+        lightColor: hexToRgba(secondaryColor, 0.15),
       },
     ];
     onSave(updatedCalendars);
@@ -168,9 +184,42 @@ export default function CalendarSettings({
               <div>
                 <label
                   htmlFor="primary-id"
-                  className="block text-sm font-medium mb-1"
+                  className="flex items-center gap-1 text-sm font-medium mb-1"
                 >
                   Calendar ID
+                  <div className="relative inline-block">
+                    <svg
+                      onMouseEnter={() => setShowTooltip(true)}
+                      onMouseLeave={() => setShowTooltip(false)}
+                      className="w-4 h-4 text-[var(--foreground-muted)] cursor-help"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                      <path d="M12 16v-4" strokeWidth="2" strokeLinecap="round" />
+                      <circle cx="12" cy="8" r="0.5" fill="currentColor" strokeWidth="1" />
+                    </svg>
+                    {showTooltip && (
+                      <div
+                        className="absolute left-6 top-0 z-50 w-64 p-3 text-xs rounded-lg shadow-lg"
+                        style={{
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          color: "var(--foreground)",
+                        }}
+                      >
+                        <div className="font-semibold mb-1">How to find your Calendar ID:</div>
+                        <ol className="space-y-0.5 list-decimal list-inside text-[var(--foreground-muted)]">
+                          <li>Open Google Calendar</li>
+                          <li>Click calendar in left sidebar</li>
+                          <li>Click ⋮ → "Settings and sharing"</li>
+                          <li>Scroll to "Integrate calendar"</li>
+                          <li>Copy the "Calendar ID"</li>
+                        </ol>
+                      </div>
+                    )}
+                  </div>
                 </label>
                 <input
                   id="primary-id"
@@ -188,6 +237,42 @@ export default function CalendarSettings({
                 />
                 <p className="text-xs text-[var(--foreground-muted)] mt-1">
                   Use "primary" for your main Google Calendar, or enter a specific calendar ID
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="primary-color"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Calendar Color
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="primary-color"
+                    type="color"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="h-10 w-20 cursor-pointer rounded"
+                    style={{
+                      border: "1px solid var(--border)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="flex-1 font-mono text-sm"
+                    style={{
+                      padding: "0.5rem",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  Default color for events (used when Google colors are disabled)
                 </p>
               </div>
             </div>
@@ -238,9 +323,42 @@ export default function CalendarSettings({
               <div>
                 <label
                   htmlFor="secondary-id"
-                  className="block text-sm font-medium mb-1"
+                  className="flex items-center gap-1 text-sm font-medium mb-1"
                 >
                   Calendar ID
+                  <div className="relative inline-block">
+                    <svg
+                      onMouseEnter={() => setShowTooltip(true)}
+                      onMouseLeave={() => setShowTooltip(false)}
+                      className="w-4 h-4 text-[var(--foreground-muted)] cursor-help"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                      <path d="M12 16v-4" strokeWidth="2" strokeLinecap="round" />
+                      <circle cx="12" cy="8" r="0.5" fill="currentColor" strokeWidth="1" />
+                    </svg>
+                    {showTooltip && (
+                      <div
+                        className="absolute left-6 top-0 z-50 w-64 p-3 text-xs rounded-lg shadow-lg"
+                        style={{
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          color: "var(--foreground)",
+                        }}
+                      >
+                        <div className="font-semibold mb-1">How to find your Calendar ID:</div>
+                        <ol className="space-y-0.5 list-decimal list-inside text-[var(--foreground-muted)]">
+                          <li>Open Google Calendar</li>
+                          <li>Click calendar in left sidebar</li>
+                          <li>Click ⋮ → "Settings and sharing"</li>
+                          <li>Scroll to "Integrate calendar"</li>
+                          <li>Copy the "Calendar ID"</li>
+                        </ol>
+                      </div>
+                    )}
+                  </div>
                 </label>
                 <input
                   id="secondary-id"
@@ -260,25 +378,72 @@ export default function CalendarSettings({
                   Find this in Google Calendar settings under "Integrate calendar"
                 </p>
               </div>
+
+              <div>
+                <label
+                  htmlFor="secondary-color"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Calendar Color
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="secondary-color"
+                    type="color"
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    className="h-10 w-20 cursor-pointer rounded"
+                    style={{
+                      border: "1px solid var(--border)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    className="flex-1 font-mono text-sm"
+                    style={{
+                      padding: "0.5rem",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  Default color for events (used when Google colors are disabled)
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Help text */}
+          {/* Display Options */}
           <div
-            className="p-4 rounded-lg"
+            className="p-4 rounded-lg border"
             style={{
-              background: "var(--calendar-primary-light)",
-              border: "1px solid var(--calendar-primary)",
+              background: "var(--border-subtle)",
+              borderColor: "var(--border)",
             }}
           >
-            <h4 className="font-semibold text-sm mb-2" style={{ fontFamily: "var(--font-body)" }}>How to find your Calendar ID:</h4>
-            <ol className="text-sm text-[var(--foreground-muted)] space-y-1 list-decimal list-inside">
-              <li>Open Google Calendar on your computer</li>
-              <li>Click on the calendar you want to use in the left sidebar</li>
-              <li>Click the three dots and select "Settings and sharing"</li>
-              <li>Scroll to "Integrate calendar" section</li>
-              <li>Copy the "Calendar ID"</li>
-            </ol>
+            <h3 className="font-semibold text-lg mb-4" style={{ fontFamily: "var(--font-body)" }}>Display Options</h3>
+            
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useGoogleColors}
+                onChange={(e) => onUseGoogleColorsChange(e.target.checked)}
+                className="w-5 h-5 rounded"
+                style={{
+                  accentColor: "var(--accent-amber)",
+                }}
+              />
+              <div>
+                <div className="font-medium">Use Google Calendar colors</div>
+                <p className="text-xs text-[var(--foreground-muted)]">
+                  Display events with their original colors from Google Calendar
+                </p>
+              </div>
+            </label>
           </div>
         </div>
 
