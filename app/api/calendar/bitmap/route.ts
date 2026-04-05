@@ -147,12 +147,17 @@ function chooseEventTextColor(bg: string, fallback: string): string {
     b = parseInt(h.slice(4, 6), 16);
   }
 
+  const einkIndex = nearestEinkColor(r, g, b).idx;
+
   // Enforce black text for any color that maps to e-ink yellow.
-  if (nearestEinkColor(r, g, b).idx === 0x2) return "#000000";
+  if (einkIndex === 0x2) return "#000000";
+
+  // Blue backgrounds should stay white for contrast.
+  if (einkIndex === 0x5) return "#ffffff";
 
   // Otherwise keep text strictly black or white for clarity.
   const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance > 0.56 ? "#000000" : "#ffffff";
+  return luminance > 0.68 ? "#000000" : "#ffffff";
 }
 
 // ─── Layout constants (must match app/calendar/page.tsx exactly) ──────────────
