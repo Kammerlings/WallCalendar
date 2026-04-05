@@ -15,6 +15,10 @@ let activeFontSource = "uninitialized";
 async function ensureFonts(): Promise<string> {
   if (fontsReady) return activeFontSource;
 
+  fontsReady = true;
+  activeFontSource = "js-pixel-fonts";
+  return activeFontSource;
+
   let fontRegistered = false;
 
   // Prefer bundled font assets from node_modules for deterministic serverless deploys.
@@ -164,12 +168,130 @@ function chooseEventTextColor(bg: string, fallback: string): string {
 const PIXEL_FONT = pixelFonts.sevenPlus;
 const HEADER_SCALE = 2;
 const BODY_SCALE = 1;
+const DAY_SCALE = 2;
+const HOUR_SCALE = 2;
+
+function cloneRows(rows: number[][]): number[][] {
+  return rows.map(row => row.slice());
+}
+
+function makeAccentGlyph(baseChar: string, accent: "dots" | "ring") {
+  const base = (PIXEL_FONT.glyphs as Record<string, any>)[baseChar];
+  if (!base) return;
+
+  const width = Math.max(...base.pixels.map((row: number[]) => row.length), 5);
+  const accentRows = accent === "ring"
+    ? [
+        [0, 1, 1, 1, 0],
+        [1, 0, 0, 0, 1],
+      ]
+    : [
+        [0, 1, 0, 1, 0],
+        [0, 0, 0, 0, 0],
+      ];
+
+  const padRow = (row: number[]) => {
+    if (row.length >= width) return row.slice(0, width);
+    const left = Math.floor((width - row.length) / 2);
+    return [
+      ...Array(left).fill(0),
+      ...row,
+      ...Array(width - left - row.length).fill(0),
+    ];
+  };
+
+  const pixels: number[][] = [padRow(accentRows[0]), padRow(accentRows[1]), ...cloneRows(base.pixels)];
+  return { offset: 0, pixels };
+}
+
+function registerSwedishGlyphs() {
+  const glyphs = PIXEL_FONT.glyphs as Record<string, any>;
+  const add = (target: string, base: string, accent: "dots" | "ring") => {
+    if (!glyphs[target] && glyphs[base]) glyphs[target] = makeAccentGlyph(base, accent);
+  };
+
+  add("ä", "a", "dots");
+  add("Ä", "A", "dots");
+  add("ö", "o", "dots");
+  add("Ö", "O", "dots");
+  add("å", "a", "ring");
+  add("Å", "A", "ring");
+}
+
+registerSwedishGlyphs();
 
 function measurePixelText(text: string, scale: number): { width: number; height: number } {
   const pixels = renderPixels(text, PIXEL_FONT);
   const width = pixels.reduce((acc, row) => Math.max(acc, row.length), 0) * scale;
   const height = pixels.length * scale;
   return { width, height };
+}
+
+function splitLongWordWithHyphen(word: string, maxWidth: number, scale: number): string[] {
+  const parts: string[] = [];
+  let remaining = word;
+
+  while (remaining.length > 0) {
+    let end = remaining.length;
+    while (end > 1 && measurePixelText(`${remaining.slice(0, end)}-`, scale).width > maxWidth) {
+      end--;
+    }
+
+    if (end <= 0) break;
+    if (end >= remaining.length) {
+      parts.push(remaining);
+      break;
+    }
+
+    parts.push(`${remaining.slice(0, end)}-`);
+    remaining = remaining.slice(end);
+  }
+
+  return parts.length ? parts : [word];
+}
+
+function wrapPixelText(text: string, maxWidth: number, scale: number, maxLines: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  const flushCurrent = () => {
+    if (current) {
+      lines.push(current);
+      current = "";
+    }
+  };
+
+  for (const word of words) {
+    const chunks = measurePixelText(word, scale).width > maxWidth
+      ? splitLongWordWithHyphen(word, maxWidth, scale)
+      : [word];
+
+    for (const chunk of chunks) {
+      const candidate = current ? `${current} ${chunk}` : chunk;
+      if (measurePixelText(candidate, scale).width <= maxWidth) {
+        current = candidate;
+      } else {
+        flushCurrent();
+        current = chunk;
+      }
+
+      if (chunk.endsWith("-")) flushCurrent();
+    }
+  }
+
+  flushCurrent();
+
+  if (lines.length <= maxLines) return lines;
+
+  const clipped = lines.slice(0, maxLines);
+  const last = clipped[maxLines - 1];
+  let trimmed = last;
+  while (trimmed.length > 0 && measurePixelText(`${trimmed}…`, scale).width > maxWidth) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  clipped[maxLines - 1] = `${trimmed}…`;
+  return clipped;
 }
 
 function drawPixelText(
@@ -370,7 +492,7 @@ function renderCalendar(
     const headerInnerW = DAY_COL_W - borderW;
     const headerCenterX = x + borderW + headerInnerW / 2;
     const dayName = DAY_NAMES[(day.getDay() + 6) % 7];
-    drawPixelText(ctx, dayName, headerCenterX, HEADER_H + 3, "#000000", BODY_SCALE, "center", "top");
+    drawPixelText(ctx, dayName, headerCenterX, HEADER_H + 3, "#000000", DAY_SCALE, "center", "top");
 
     // Date number
     const dayNum = String(day.getDate());
@@ -436,7 +558,7 @@ function renderCalendar(
     const y = GRID_TOP + hi * PX_PER_HOUR;
     ctx.fillStyle = "#dddddd";
     ctx.fillRect(TIME_COL_W, y, W - TIME_COL_W, 1);
-    drawPixelText(ctx, `${String(HOURS[hi]).padStart(2, "0")}:00`, 2, y + 1, "#000000", BODY_SCALE, "left", "top");
+    drawPixelText(ctx, `${String(HOURS[hi]).padStart(2, "0")}:00`, 2, y + 1, "#000000", HOUR_SCALE, "left", "top");
   }
 
   // ── Timed events
@@ -478,21 +600,11 @@ function renderCalendar(
           const totalLines = Math.floor((evH - 2) / LINE_H);
           const titleLines = Math.max(1, totalLines - 1);
 
-          // Draw title with line-wrapping, clamped to titleLines
-          const words = ev.title.split(" ");
-          let line = "", lineY = evTop + 2, drawn = 0;
-          for (const word of words) {
-            const test = line ? `${line} ${word}` : word;
-            if (measurePixelText(test, BODY_SCALE).width > halfW - 4 && line) {
-              if (drawn >= titleLines - 1) {
-                drawPixelText(ctx, line + "…", evX + 1, lineY, fg, BODY_SCALE, "left", "top");
-                line = ""; break;
-              }
-              drawPixelText(ctx, line, evX + 1, lineY, fg, BODY_SCALE, "left", "top");
-              line = word; lineY += LINE_H; drawn++;
-            } else { line = test; }
+          // Draw title with line-wrapping and hyphenation for long words.
+          const wrapped = wrapPixelText(ev.title, halfW - 4, BODY_SCALE, titleLines);
+          for (let li = 0; li < wrapped.length; li++) {
+            drawPixelText(ctx, wrapped[li], evX + 1, evTop + 2 + li * LINE_H, fg, BODY_SCALE, "left", "top");
           }
-          if (line) drawPixelText(ctx, line, evX + 1, lineY, fg, BODY_SCALE, "left", "top");
 
           // Start time on last line
           if (totalLines >= 2) {
