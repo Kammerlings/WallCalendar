@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,23 @@ async function ensureFonts(): Promise<string> {
   if (fontsReady) return activeFontSource;
 
   let fontRegistered = false;
+
+  // Prefer bundled font assets from node_modules for deterministic serverless deploys.
+  const bundledCandidates = [
+    join(process.cwd(), "node_modules", "@fontsource", "dm-sans", "files", "dm-sans-latin-400-normal.woff"),
+    join(process.cwd(), "node_modules", "@fontsource", "dm-sans", "files", "dm-sans-latin-700-normal.woff"),
+  ];
+  for (const p of bundledCandidates) {
+    if (existsSync(p)) {
+      try {
+        GlobalFonts.register(readFileSync(p), "DM Sans");
+        fontRegistered = true;
+        activeFontSource = `bundled:${p}`;
+      } catch (e) {
+        console.error("Bundled font registration failed:", p, e);
+      }
+    }
+  }
 
   // jsDelivr CDN serving @fontsource/dm-sans v4 TTF files
   const CDN = "https://cdn.jsdelivr.net/npm/@fontsource/dm-sans@4.5.1/files";
@@ -38,7 +56,7 @@ async function ensureFonts(): Promise<string> {
   ];
   let systemLoaded = false;
   for (const p of systemCandidates) {
-    if (existsSync(p)) {
+    if (!fontRegistered && existsSync(p)) {
       try {
         GlobalFonts.register(readFileSync(p), "DM Sans");
         systemLoaded = true;
@@ -51,7 +69,7 @@ async function ensureFonts(): Promise<string> {
     }
   }
 
-  if (!systemLoaded) {
+  if (!systemLoaded && !fontRegistered) {
     // Fetch DM Sans TTF from jsDelivr
     console.log("Fetching DM Sans from CDN…");
     await Promise.all(
@@ -434,9 +452,8 @@ export async function GET(request: NextRequest) {
   if (!key || key !== process.env.ESP32_API_KEY)
     return new NextResponse("Unauthorized", { status: 401 });
 
-  const fontSource = await ensureFonts();
-
   try {
+    const fontSource = await ensureFonts();
     const accessToken = await getAccessToken();
     const [cal1, cal2] = getCalendars();
 
