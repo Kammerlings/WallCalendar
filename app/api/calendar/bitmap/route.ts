@@ -108,13 +108,22 @@ const EINK_PALETTE = [
   { idx: 0x6, r: 0,   g: 119, b: 0   }, // GREEN
 ];
 
-function nearestEinkIndex(r: number, g: number, b: number): number {
-  let best = 0x1, bestDist = Infinity;
+function nearestEinkColor(r: number, g: number, b: number) {
+  let best = EINK_PALETTE[1], bestDist = Infinity;
   for (const c of EINK_PALETTE) {
     const d = (r - c.r) ** 2 + (g - c.g) ** 2 + (b - c.b) ** 2;
-    if (d < bestDist) { bestDist = d; best = c.idx; }
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
+    }
   }
   return best;
+}
+
+function clampByte(v: number): number {
+  if (v < 0) return 0;
+  if (v > 255) return 255;
+  return v;
 }
 
 // ─── Layout constants (must match app/calendar/page.tsx exactly) ──────────────
@@ -488,13 +497,64 @@ export async function GET(request: NextRequest) {
 
     const { data: rgba } = canvas.getContext("2d").getImageData(0, 0, W, H);
     const packed = new Uint8Array(W / 2 * H);
+
+    // Multicolor Floyd-Steinberg error diffusion across the six-color e-ink palette.
+    let errCurr = new Float32Array(W * 3);
+    let errNext = new Float32Array(W * 3);
+
     for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x += 2) {
-        const i0 = (y * W + x) * 4;
-        const c0 = nearestEinkIndex(rgba[i0],   rgba[i0+1], rgba[i0+2]);
-        const c1 = nearestEinkIndex(rgba[i0+4], rgba[i0+5], rgba[i0+6]);
-        packed[y * (W / 2) + x / 2] = (c0 << 4) | c1;
+      errNext.fill(0);
+
+      for (let x = 0; x < W; x++) {
+        const src = (y * W + x) * 4;
+        const ep = x * 3;
+
+        const r = clampByte(rgba[src] + errCurr[ep]);
+        const g = clampByte(rgba[src + 1] + errCurr[ep + 1]);
+        const b = clampByte(rgba[src + 2] + errCurr[ep + 2]);
+
+        const q = nearestEinkColor(r, g, b);
+        const out = y * (W / 2) + (x >> 1);
+        if ((x & 1) === 0) {
+          packed[out] = q.idx << 4;
+        } else {
+          packed[out] |= q.idx;
+        }
+
+        const er = r - q.r;
+        const eg = g - q.g;
+        const eb = b - q.b;
+
+        if (x + 1 < W) {
+          const p = (x + 1) * 3;
+          errCurr[p] += er * (7 / 16);
+          errCurr[p + 1] += eg * (7 / 16);
+          errCurr[p + 2] += eb * (7 / 16);
+        }
+        if (y + 1 < H) {
+          if (x > 0) {
+            const p = (x - 1) * 3;
+            errNext[p] += er * (3 / 16);
+            errNext[p + 1] += eg * (3 / 16);
+            errNext[p + 2] += eb * (3 / 16);
+          }
+
+          errNext[ep] += er * (5 / 16);
+          errNext[ep + 1] += eg * (5 / 16);
+          errNext[ep + 2] += eb * (5 / 16);
+
+          if (x + 1 < W) {
+            const p = (x + 1) * 3;
+            errNext[p] += er * (1 / 16);
+            errNext[p + 1] += eg * (1 / 16);
+            errNext[p + 2] += eb * (1 / 16);
+          }
+        }
       }
+
+      const tmp = errCurr;
+      errCurr = errNext;
+      errNext = tmp;
     }
 
     return new NextResponse(packed, {
