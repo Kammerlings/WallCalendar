@@ -8,9 +8,12 @@ export const dynamic = "force-dynamic";
 
 // ─── Font loading (DM Sans — same as the /calendar preview page) ─────────────
 let fontsReady = false;
+let activeFontSource = "uninitialized";
 
-async function ensureFonts() {
-  if (fontsReady) return;
+async function ensureFonts(): Promise<string> {
+  if (fontsReady) return activeFontSource;
+
+  let fontRegistered = false;
 
   // jsDelivr CDN serving @fontsource/dm-sans v4 TTF files
   const CDN = "https://cdn.jsdelivr.net/npm/@fontsource/dm-sans@4.5.1/files";
@@ -21,6 +24,13 @@ async function ensureFonts() {
 
   // Try system fonts first (fast path on some environments)
   const systemCandidates = [
+    // Windows
+    "C:/Windows/Fonts/arial.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    // macOS
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    // Linux
     "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",
@@ -29,9 +39,15 @@ async function ensureFonts() {
   let systemLoaded = false;
   for (const p of systemCandidates) {
     if (existsSync(p)) {
-      GlobalFonts.register(readFileSync(p), "DM Sans");
-      systemLoaded = true;
-      break;
+      try {
+        GlobalFonts.register(readFileSync(p), "DM Sans");
+        systemLoaded = true;
+        fontRegistered = true;
+        activeFontSource = `system:${p}`;
+        break;
+      } catch (e) {
+        console.error("System font registration failed:", p, e);
+      }
     }
   }
 
@@ -42,7 +58,11 @@ async function ensureFonts() {
       weights.map(async ([url, family]) => {
         try {
           const res = await fetch(url);
-          if (res.ok) GlobalFonts.register(Buffer.from(await res.arrayBuffer()), family);
+          if (res.ok) {
+            GlobalFonts.register(Buffer.from(await res.arrayBuffer()), family);
+            fontRegistered = true;
+            activeFontSource = `cdn:${url}`;
+          }
         } catch (e) {
           console.error("Font fetch failed:", url, e);
         }
@@ -50,7 +70,14 @@ async function ensureFonts() {
     );
   }
 
+  if (!fontRegistered) {
+    throw new Error(
+      "No font could be registered for bitmap rendering. Install a system sans-serif font or allow outbound access to jsDelivr."
+    );
+  }
+
   fontsReady = true;
+  return activeFontSource;
 }
 
 // ─── E-ink color palette ──────────────────────────────────────────────────────
@@ -87,6 +114,7 @@ const PX_PER_HOUR  = GRID_H / HOURS.length;
 
 const DAY_NAMES   = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"];
 const MONTH_NAMES = ["Januari","Februari","Mars","April","Maj","Juni","Juli","Augusti","September","Oktober","November","December"];
+const FONT_STACK = "'DM Sans', 'Arial', 'Liberation Sans', 'DejaVu Sans', sans-serif";
 
 // ─── Calendar config from env vars ───────────────────────────────────────────
 interface CalConfig { id: string; name: string; color: string; }
@@ -207,12 +235,12 @@ function renderCalendar(
   ctx.fillRect(0, 0, W, HEADER_H);
 
   ctx.fillStyle = "#ffdd00";
-  ctx.font = "bold 13px 'DM Sans'";
+  ctx.font = `bold 13px ${FONT_STACK}`;
   ctx.textBaseline = "middle";
   ctx.fillText(`Vecka ${weekNum}`, 10, HEADER_H / 2);
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 13px 'DM Sans'";
+  ctx.font = `bold 13px ${FONT_STACK}`;
   const monthStr = `${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}`;
   ctx.fillText(monthStr, W - ctx.measureText(monthStr).width - 10, HEADER_H / 2);
 
@@ -234,13 +262,13 @@ function renderCalendar(
 
     // Day name
     ctx.fillStyle = "#444444";
-    ctx.font = "bold 9px 'DM Sans'";
+    ctx.font = `bold 9px ${FONT_STACK}`;
     ctx.textBaseline = "top";
     ctx.fillText(DAY_NAMES[(day.getDay() + 6) % 7], x + borderW + 3, HEADER_H + 3);
 
     // Date number
     ctx.fillStyle = "#000000";
-    ctx.font = `${isToday ? "bold" : "normal"} 16px 'DM Sans'`;
+    ctx.font = `${isToday ? "bold" : "normal"} 16px ${FONT_STACK}`;
     ctx.textBaseline = "bottom";
     ctx.fillText(String(day.getDate()), x + borderW + 3, HEADER_H + DAY_HEADER_H - 2);
 
@@ -249,7 +277,7 @@ function renderCalendar(
       ctx.fillStyle = "#000000";
       ctx.fillRect(x + borderW, HEADER_H, 28, 14);
       ctx.fillStyle = "#ffdd00";
-      ctx.font = "bold 11px 'DM Sans'";
+      ctx.font = `bold 11px ${FONT_STACK}`;
       ctx.textBaseline = "top";
       ctx.fillText(`V${getISOWeek(day)}`, x + borderW + 2, HEADER_H + 1);
     }
@@ -275,7 +303,7 @@ function renderCalendar(
         ctx.fillStyle = bg;
         ctx.fillRect(x + borderW + 1, rowTop + 2, DAY_COL_W - borderW - 2, ALLDAY_ROW_H - 4);
         ctx.fillStyle = fg;
-        ctx.font = "bold 8px 'DM Sans'";
+        ctx.font = `bold 8px ${FONT_STACK}`;
         ctx.textBaseline = "middle";
         let title = ev.title;
         const suffix = allDay.length > 1 ? "…" : "";
@@ -301,7 +329,7 @@ function renderCalendar(
     ctx.fillStyle = cal.color;
     ctx.fillRect(0, rowTop, TIME_COL_W, ALLDAY_ROW_H);
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 8px 'DM Sans'";
+    ctx.font = `bold 8px ${FONT_STACK}`;
     ctx.textBaseline = "middle";
     ctx.fillText(cal.name.slice(0, 3).toUpperCase(), 4, rowTop + ALLDAY_ROW_H / 2);
     ctx.fillStyle = "#000000";
@@ -314,7 +342,7 @@ function renderCalendar(
     ctx.fillStyle = "#dddddd";
     ctx.fillRect(TIME_COL_W, y, W - TIME_COL_W, 1);
     ctx.fillStyle = "#555555";
-    ctx.font = "11px 'DM Sans'";
+    ctx.font = `11px ${FONT_STACK}`;
     ctx.textBaseline = "top";
     ctx.fillText(`${String(HOURS[hi]).padStart(2, "0")}:00`, 2, y + 1);
   }
@@ -364,7 +392,7 @@ function renderCalendar(
           // Draw title with line-wrapping, clamped to titleLines
           const words = ev.title.split(" ");
           let line = "", lineY = evTop + 2, drawn = 0;
-          ctx.font = "bold 9px 'DM Sans'";
+          ctx.font = `bold 9px ${FONT_STACK}`;
           for (const word of words) {
             const test = line ? `${line} ${word}` : word;
             if (ctx.measureText(test).width > halfW - 4 && line) {
@@ -380,7 +408,7 @@ function renderCalendar(
 
           // Start time on last line
           if (totalLines >= 2) {
-            ctx.font = "9px 'DM Sans'";
+            ctx.font = `9px ${FONT_STACK}`;
             const timeStr = start.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
             ctx.fillText(timeStr, evX + 1, evTop + evH - LINE_H);
           }
@@ -402,10 +430,11 @@ function renderCalendar(
 // ─── Route handler ────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
+  const debug = request.nextUrl.searchParams.get("debug") === "1";
   if (!key || key !== process.env.ESP32_API_KEY)
     return new NextResponse("Unauthorized", { status: 401 });
 
-  await ensureFonts();
+  const fontSource = await ensureFonts();
 
   try {
     const accessToken = await getAccessToken();
@@ -424,6 +453,17 @@ export async function GET(request: NextRequest) {
     const canvas = createCanvas(W, H);
     renderCalendar(canvas.getContext("2d"), today, cal1, events1, cal2, events2);
 
+    if (debug) {
+      const png = await canvas.encode("png");
+      return new NextResponse(png, {
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "no-store",
+          "X-WallCalendar-Font-Source": fontSource,
+        },
+      });
+    }
+
     const { data: rgba } = canvas.getContext("2d").getImageData(0, 0, W, H);
     const packed = new Uint8Array(W / 2 * H);
     for (let y = 0; y < H; y++) {
@@ -440,6 +480,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": "application/octet-stream",
         "Content-Length": String(packed.length),
         "Cache-Control": "no-store",
+        "X-WallCalendar-Font-Source": fontSource,
       },
     });
   } catch (err: any) {

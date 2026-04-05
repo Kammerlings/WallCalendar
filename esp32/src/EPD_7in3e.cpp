@@ -185,105 +185,6 @@ void EPD_7IN3E_Init(void)
 
 }
 
-/******************************************************************************
-function :  Clear screen
-parameter:
-******************************************************************************/
-void EPD_7IN3E_Clear(UBYTE color)
-{
-    UWORD Width, Height;
-    Width = (EPD_7IN3E_WIDTH % 2 == 0)? (EPD_7IN3E_WIDTH / 2 ): (EPD_7IN3E_WIDTH / 2 + 1);
-    Height = EPD_7IN3E_HEIGHT;
-
-    EPD_7IN3E_SendCommand(0x10);
-    for (UWORD j = 0; j < Height; j++) {
-        for (UWORD i = 0; i < Width; i++) {
-            EPD_7IN3E_SendData((color<<4)|color);
-        }
-    }
-
-    EPD_7IN3E_TurnOnDisplay();
-}
-
-/******************************************************************************
-function :  show 7 kind of color block
-parameter:
-******************************************************************************/
-void EPD_7IN3E_Show7Block(void)
-{
-    unsigned long i, j, k;
-    unsigned char const Color_seven[6] = 
-    {EPD_7IN3E_BLACK, EPD_7IN3E_YELLOW, EPD_7IN3E_RED, EPD_7IN3E_BLUE, EPD_7IN3E_GREEN, EPD_7IN3E_WHITE};
-
-    EPD_7IN3E_SendCommand(0x10);
-    for(k = 0 ; k < 6; k ++) {
-        for(j = 0 ; j < 20000; j ++) {
-            EPD_7IN3E_SendData((Color_seven[k]<<4) |Color_seven[k]);
-        }
-    }
-    EPD_7IN3E_TurnOnDisplay();
-}
-
-void EPD_7IN3E_Show(void)
-{
-    unsigned long k,o;
-    unsigned char const Color_seven[6] = 
-    {EPD_7IN3E_BLACK, EPD_7IN3E_YELLOW, EPD_7IN3E_RED, EPD_7IN3E_BLUE, EPD_7IN3E_GREEN, EPD_7IN3E_WHITE};
-
-    UWORD Width, Height;
-    Width = (EPD_7IN3E_WIDTH % 2 == 0)? (EPD_7IN3E_WIDTH / 2 ): (EPD_7IN3E_WIDTH / 2 + 1);
-    Height = EPD_7IN3E_HEIGHT;
-    k = 0;
-    o = 0;
-
-    EPD_7IN3E_SendCommand(0x10);
-    for (UWORD j = 0; j < Height; j++) {
-        if((j > 10) && (j<50))
-        for (UWORD i = 0; i < Width; i++) {
-                EPD_7IN3E_SendData((Color_seven[0]<<4) |Color_seven[0]);
-            }
-        else if(o < Height/2)
-        for (UWORD i = 0; i < Width; i++) {
-                EPD_7IN3E_SendData((Color_seven[0]<<4) |Color_seven[0]);
-            }
-        
-        else
-        {
-            for (UWORD i = 0; i < Width; i++) {
-                EPD_7IN3E_SendData((Color_seven[k]<<4) |Color_seven[k]);
-                
-            }
-            k++ ;
-            if(k >= 6)
-                k = 0;
-        }
-            
-        o++ ;
-        if(o >= Height)
-            o = 0;
-    }
-    EPD_7IN3E_TurnOnDisplay();
-}
-
-/******************************************************************************
-function :  Sends the image buffer in RAM to e-Paper and displays
-parameter:
-******************************************************************************/
-void EPD_7IN3E_Display(UBYTE *Image)
-{
-    UWORD Width, Height;
-    Width = (EPD_7IN3E_WIDTH % 2 == 0)? (EPD_7IN3E_WIDTH / 2 ): (EPD_7IN3E_WIDTH / 2 + 1);
-    Height = EPD_7IN3E_HEIGHT;
-
-    EPD_7IN3E_SendCommand(0x10);
-    for (UWORD j = 0; j < Height; j++) {
-        for (UWORD i = 0; i < Width; i++) {
-            EPD_7IN3E_SendData(Image[i + j * Width]);
-        }
-    }
-    EPD_7IN3E_TurnOnDisplay();
-}
-
 // ── Streaming API: send image in chunks so no full-image buffer is needed ──
 void EPD_7IN3E_DisplayBegin(void)
 {
@@ -299,27 +200,6 @@ void EPD_7IN3E_DisplayChunk(UBYTE *data, UDOUBLE len)
 void EPD_7IN3E_DisplayEnd(void)
 {
     EPD_7IN3E_TurnOnDisplay();
-}
-
-void EPD_7IN3E_DisplayPart(const UBYTE *Image, UWORD xstart, UWORD ystart, UWORD image_width, UWORD image_heigh)
-{
-	unsigned long i, j;
-	UWORD Width, Height;
-	Width = (EPD_7IN3E_WIDTH % 2 == 0)? (EPD_7IN3E_WIDTH / 2 ): (EPD_7IN3E_WIDTH / 2 + 1);
-	Height = EPD_7IN3E_HEIGHT;
-	
-	EPD_7IN3E_SendCommand(0x10);
-	for(i=0; i<Height; i++) {
-		for(j=0; j<Width; j++) {
-			if(i<image_heigh+ystart && i>=ystart && j<(image_width+xstart)/2 && j>=xstart/2) {
-				EPD_7IN3E_SendData(Image[(j-xstart/2) + (image_width/2*(i-ystart))]);
-			}
-			else {
-				EPD_7IN3E_SendData(0x11);
-			}
-		}
-	}
-	EPD_7IN3E_TurnOnDisplay();
 }
 
 /******************************************************************************
