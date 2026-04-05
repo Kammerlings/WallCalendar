@@ -279,16 +279,20 @@ function renderCalendar(
     ctx.fillRect(x + borderW, HEADER_H, DAY_COL_W - borderW, DAY_HEADER_H);
 
     // Day name
+    const headerInnerW = DAY_COL_W - borderW;
+    const headerCenterX = x + borderW + headerInnerW / 2;
+    const dayName = DAY_NAMES[(day.getDay() + 6) % 7];
     ctx.fillStyle = "#444444";
     ctx.font = `bold 9px ${FONT_STACK}`;
     ctx.textBaseline = "top";
-    ctx.fillText(DAY_NAMES[(day.getDay() + 6) % 7], x + borderW + 3, HEADER_H + 3);
+    ctx.fillText(dayName, headerCenterX - ctx.measureText(dayName).width / 2, HEADER_H + 3);
 
     // Date number
+    const dayNum = String(day.getDate());
     ctx.fillStyle = "#000000";
     ctx.font = `${isToday ? "bold" : "normal"} 16px ${FONT_STACK}`;
     ctx.textBaseline = "bottom";
-    ctx.fillText(String(day.getDate()), x + borderW + 3, HEADER_H + DAY_HEADER_H - 2);
+    ctx.fillText(dayNum, headerCenterX - ctx.measureText(dayNum).width / 2, HEADER_H + DAY_HEADER_H - 2);
 
     // Week badge on Monday
     if (isMonday) {
