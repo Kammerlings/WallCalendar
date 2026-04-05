@@ -15,22 +15,6 @@ async function ensureFonts(): Promise<string> {
   if (fontsReady) return activeFontSource;
 
   let fontRegistered = false;
-  // Preferred pixel-style font for crisp on/off glyph rendering.
-  const pixelFontCandidates = [
-    join(process.cwd(), "node_modules", "@fontsource", "press-start-2p", "files", "press-start-2p-latin-400-normal.woff"),
-    join(process.cwd(), "node_modules", "@fontsource", "press-start-2p", "files", "press-start-2p-latin-400-normal.woff2"),
-  ];
-  for (const p of pixelFontCandidates) {
-    if (existsSync(p)) {
-      try {
-        GlobalFonts.register(readFileSync(p), "PixelFont");
-        fontRegistered = true;
-        activeFontSource = `pixel:${p}`;
-      } catch (e) {
-        console.error("Pixel font registration failed:", p, e);
-      }
-    }
-  }
 
   // Prefer bundled font assets from node_modules for deterministic serverless deploys.
   const bundledCandidates = [
@@ -142,6 +126,31 @@ function clampByte(v: number): number {
   return v;
 }
 
+function chooseEventTextColor(bg: string, fallback: string): string {
+  const hex = bg.trim();
+  const short = /^#([0-9a-fA-F]{3})$/;
+  const full = /^#([0-9a-fA-F]{6})$/;
+  let r = 0, g = 0, b = 0;
+
+  const m3 = hex.match(short);
+  if (m3) {
+    const h = m3[1];
+    r = parseInt(h[0] + h[0], 16);
+    g = parseInt(h[1] + h[1], 16);
+    b = parseInt(h[2] + h[2], 16);
+  } else {
+    const m6 = hex.match(full);
+    if (!m6) return fallback;
+    const h = m6[1];
+    r = parseInt(h.slice(0, 2), 16);
+    g = parseInt(h.slice(2, 4), 16);
+    b = parseInt(h.slice(4, 6), 16);
+  }
+
+  // Enforce black text for any color that maps to e-ink yellow.
+  return nearestEinkColor(r, g, b).idx === 0x2 ? "#000000" : fallback;
+}
+
 // ─── Layout constants (must match app/calendar/page.tsx exactly) ──────────────
 const W = 800, H = 480;
 const HEADER_H     = 28;
@@ -157,7 +166,7 @@ const PX_PER_HOUR  = GRID_H / HOURS.length;
 
 const DAY_NAMES   = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"];
 const MONTH_NAMES = ["Januari","Februari","Mars","April","Maj","Juni","Juli","Augusti","September","Oktober","November","December"];
-const FONT_STACK = "'PixelFont', 'DM Sans', 'Arial', 'Liberation Sans', 'DejaVu Sans', sans-serif";
+const FONT_STACK = "'DM Sans', 'Arial', 'Liberation Sans', 'DejaVu Sans', sans-serif";
 
 // ─── Calendar config from env vars ───────────────────────────────────────────
 interface CalConfig { id: string; name: string; color: string; }
@@ -265,12 +274,6 @@ function renderCalendar(
   cal1: CalConfig, events1: CalEvent[],
   cal2: CalConfig, events2: CalEvent[],
 ) {
-  // Prefer hard-edged text rendering where the backend supports these hints.
-  const ctxAny = ctx as any;
-  if ("antialias" in ctxAny) ctxAny.antialias = "none";
-  if ("patternQuality" in ctxAny) ctxAny.patternQuality = "nearest";
-  if ("quality" in ctxAny) ctxAny.quality = "nearest";
-
   const weekDays = getWeekDays(today);
   const todayStr = today.toDateString();
   const weekNum  = getISOWeek(today);
@@ -352,7 +355,7 @@ function renderCalendar(
       if (allDay.length > 0) {
         const ev  = allDay[0];
         const bg  = ev.color ?? cal.color;
-        const fg  = ev.textColor ?? "#ffffff";
+        const fg  = chooseEventTextColor(bg, ev.textColor ?? "#ffffff");
         ctx.fillStyle = bg;
         ctx.fillRect(x + borderW + 1, rowTop + 2, DAY_COL_W - borderW - 2, ALLDAY_ROW_H - 4);
         ctx.fillStyle = fg;
@@ -430,7 +433,7 @@ function renderCalendar(
         const evTop = GRID_TOP + topPct * GRID_H;
         const evH   = Math.max(6, (botPct - topPct) * GRID_H);
         const bg    = ev.color ?? cal.color;
-        const fg    = ev.textColor ?? "#ffffff";
+        const fg    = chooseEventTextColor(bg, ev.textColor ?? "#ffffff");
 
         ctx.fillStyle = bg;
         ctx.fillRect(evX, evTop, halfW - 1, evH);
