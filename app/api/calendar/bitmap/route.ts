@@ -3,7 +3,7 @@ import { google } from "googleapis";
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { fonts as pixelFonts, renderPixels } from "js-pixel-fonts";
+import { fonts as pixelFonts } from "js-pixel-fonts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -175,8 +175,14 @@ function cloneRows(rows: number[][]): number[][] {
   return rows.map(row => row.slice());
 }
 
-function makeAccentGlyph(baseChar: string, accent: "dots" | "ring") {
-  const base = (PIXEL_FONT.glyphs as Record<string, any>)[baseChar];
+type PixelGlyph = { offset: number; pixels: number[][] };
+
+function makeGlyph(pixels: number[][], offset = 0): PixelGlyph {
+  return { offset, pixels };
+}
+
+function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) {
+  const base = (PIXEL_FONT.glyphs as Record<string, PixelGlyph>)[baseChar];
   if (!base) return;
 
   const width = Math.max(...base.pixels.map((row: number[]) => row.length), 5);
@@ -186,7 +192,7 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring") {
         [1, 0, 0, 0, 1],
       ]
     : [
-        [0, 1, 0, 1, 0],
+        [1, 0, 1, 0, 0],
         [0, 0, 0, 0, 0],
       ];
 
@@ -201,27 +207,76 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring") {
   };
 
   const pixels: number[][] = [padRow(accentRows[0]), padRow(accentRows[1]), ...cloneRows(base.pixels)];
-  return { offset: 0, pixels };
+  return makeGlyph(pixels, offset);
 }
 
 function registerSwedishGlyphs() {
-  const glyphs = PIXEL_FONT.glyphs as Record<string, any>;
-  const add = (target: string, base: string, accent: "dots" | "ring") => {
-    if (!glyphs[target] && glyphs[base]) glyphs[target] = makeAccentGlyph(base, accent);
+  const glyphs = PIXEL_FONT.glyphs as Record<string, PixelGlyph>;
+  const add = (target: string, base: string, accent: "dots" | "ring", offset = 0) => {
+    if (!glyphs[target] && glyphs[base]) glyphs[target] = makeAccentGlyph(base, accent, offset) as PixelGlyph;
   };
 
   add("ä", "a", "dots");
-  add("Ä", "A", "dots");
+  add("Ä", "A", "dots", -1);
   add("ö", "o", "dots");
-  add("Ö", "O", "dots");
+  add("Ö", "O", "dots", -1);
   add("å", "a", "ring");
-  add("Å", "A", "ring");
+  add("Å", "A", "ring", -1);
 }
 
 registerSwedishGlyphs();
 
+function getGlyph(character: string): PixelGlyph {
+  const glyphs = PIXEL_FONT.glyphs as Record<string, PixelGlyph>;
+  return glyphs[character] ?? glyphs[character.toUpperCase()] ?? glyphs[" "];
+}
+
+function renderPixelRows(text: string): number[][] {
+  const lines = text.split("\n");
+  const rendered: number[][][] = [];
+
+  for (const line of lines) {
+    const rowMap = new Map<number, number[]>();
+    let cursorX = 0;
+    let minY = 0;
+    let maxY = -1;
+
+    for (let index = 0; index < line.length; index++) {
+      const character = line[index];
+      const glyph = getGlyph(character);
+      const glyphWidth = Math.max(...glyph.pixels.map(row => row.length), 0);
+
+      if (cursorX > 0) cursorX += 1;
+
+      for (let rowIndex = 0; rowIndex < glyph.pixels.length; rowIndex++) {
+        const targetY = glyph.offset + rowIndex;
+        minY = Math.min(minY, targetY);
+        maxY = Math.max(maxY, targetY);
+        const targetRow = rowMap.get(targetY) ?? [];
+        const sourceRow = glyph.pixels[rowIndex];
+        for (let colIndex = 0; colIndex < sourceRow.length; colIndex++) {
+          if (!sourceRow[colIndex]) continue;
+          targetRow[cursorX + colIndex] = 1;
+        }
+        rowMap.set(targetY, targetRow);
+      }
+
+      cursorX += glyphWidth;
+    }
+
+    const lineRows: number[][] = [];
+    for (let y = minY; y <= maxY; y++) {
+      const row = rowMap.get(y) ?? [];
+      lineRows.push(row);
+    }
+    rendered.push(lineRows);
+  }
+
+  return rendered.flatMap((lineRows, index) => index === 0 ? lineRows : [[0], ...lineRows]);
+}
+
 function measurePixelText(text: string, scale: number): { width: number; height: number } {
-  const pixels = renderPixels(text, PIXEL_FONT);
+  const pixels = renderPixelRows(text);
   const width = pixels.reduce((acc, row) => Math.max(acc, row.length), 0) * scale;
   const height = pixels.length * scale;
   return { width, height };
@@ -304,7 +359,7 @@ function drawPixelText(
   align: "left" | "center" | "right" = "left",
   baseline: "top" | "middle" | "bottom" = "top",
 ) {
-  const pixels = renderPixels(text, PIXEL_FONT);
+  const pixels = renderPixelRows(text);
   const width = pixels.reduce((acc, row) => Math.max(acc, row.length), 0) * scale;
   const height = pixels.length * scale;
   let drawX = x;
@@ -492,7 +547,7 @@ function renderCalendar(
     const headerInnerW = DAY_COL_W - borderW;
     const headerCenterX = x + borderW + headerInnerW / 2;
     const dayName = DAY_NAMES[(day.getDay() + 6) % 7];
-    drawPixelText(ctx, dayName, headerCenterX, HEADER_H + 3, "#000000", DAY_SCALE, "center", "top");
+    drawPixelText(ctx, dayName, headerCenterX, HEADER_H + 2, "#000000", DAY_SCALE, "center", "top");
 
     // Date number
     const dayNum = String(day.getDate());
