@@ -283,6 +283,13 @@ function renderCalendar(
   cal1: CalConfig, events1: CalEvent[],
   cal2: CalConfig, events2: CalEvent[],
 ) {
+  // Text antialiasing introduces gray edge pixels that quantize differently on
+  // different backgrounds, so force hard-edged rasterization where supported.
+  const ctxAny = ctx as any;
+  if ("antialias" in ctxAny) ctxAny.antialias = "none";
+  if ("patternQuality" in ctxAny) ctxAny.patternQuality = "nearest";
+  if ("quality" in ctxAny) ctxAny.quality = "nearest";
+
   const weekDays = getWeekDays(today);
   const todayStr = today.toDateString();
   const weekNum  = getISOWeek(today);
