@@ -148,7 +148,11 @@ function chooseEventTextColor(bg: string, fallback: string): string {
   }
 
   // Enforce black text for any color that maps to e-ink yellow.
-  return nearestEinkColor(r, g, b).idx === 0x2 ? "#000000" : fallback;
+  if (nearestEinkColor(r, g, b).idx === 0x2) return "#000000";
+
+  // Otherwise keep text strictly black or white for clarity.
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.56 ? "#000000" : "#ffffff";
 }
 
 // ─── Layout constants (must match app/calendar/page.tsx exactly) ──────────────
@@ -286,7 +290,7 @@ function renderCalendar(
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, W, HEADER_H);
 
-  ctx.fillStyle = "#ffdd00";
+  ctx.fillStyle = "#ffffff";
   ctx.font = `bold 13px ${FONT_STACK}`;
   ctx.textBaseline = "middle";
   ctx.fillText(`Vecka ${weekNum}`, 10, HEADER_H / 2);
@@ -316,7 +320,7 @@ function renderCalendar(
     const headerInnerW = DAY_COL_W - borderW;
     const headerCenterX = x + borderW + headerInnerW / 2;
     const dayName = DAY_NAMES[(day.getDay() + 6) % 7];
-    ctx.fillStyle = "#444444";
+    ctx.fillStyle = "#000000";
     ctx.font = `bold 9px ${FONT_STACK}`;
     ctx.textBaseline = "top";
     ctx.fillText(dayName, headerCenterX - ctx.measureText(dayName).width / 2, HEADER_H + 3);
@@ -332,7 +336,7 @@ function renderCalendar(
     if (isMonday) {
       ctx.fillStyle = "#000000";
       ctx.fillRect(x + borderW, HEADER_H, 28, 14);
-      ctx.fillStyle = "#ffdd00";
+      ctx.fillStyle = "#ffffff";
       ctx.font = `bold 11px ${FONT_STACK}`;
       ctx.textBaseline = "top";
       ctx.fillText(`V${getISOWeek(day)}`, x + borderW + 2, HEADER_H + 1);
@@ -384,7 +388,7 @@ function renderCalendar(
     const rowTop = HEADER_H + DAY_HEADER_H + ci * ALLDAY_ROW_H;
     ctx.fillStyle = cal.color;
     ctx.fillRect(0, rowTop, TIME_COL_W, ALLDAY_ROW_H);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = chooseEventTextColor(cal.color, "#ffffff");
     ctx.font = `bold 8px ${FONT_STACK}`;
     ctx.textBaseline = "middle";
     ctx.fillText(cal.name.slice(0, 3).toUpperCase(), 4, rowTop + ALLDAY_ROW_H / 2);
@@ -397,7 +401,7 @@ function renderCalendar(
     const y = GRID_TOP + hi * PX_PER_HOUR;
     ctx.fillStyle = "#dddddd";
     ctx.fillRect(TIME_COL_W, y, W - TIME_COL_W, 1);
-    ctx.fillStyle = "#555555";
+    ctx.fillStyle = "#000000";
     ctx.font = `11px ${FONT_STACK}`;
     ctx.textBaseline = "top";
     ctx.fillText(`${String(HOURS[hi]).padStart(2, "0")}:00`, 2, y + 1);
