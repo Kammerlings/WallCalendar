@@ -15,6 +15,22 @@ async function ensureFonts(): Promise<string> {
   if (fontsReady) return activeFontSource;
 
   let fontRegistered = false;
+  // Preferred pixel-style font for crisp on/off glyph rendering.
+  const pixelFontCandidates = [
+    join(process.cwd(), "node_modules", "@fontsource", "press-start-2p", "files", "press-start-2p-latin-400-normal.woff"),
+    join(process.cwd(), "node_modules", "@fontsource", "press-start-2p", "files", "press-start-2p-latin-400-normal.woff2"),
+  ];
+  for (const p of pixelFontCandidates) {
+    if (existsSync(p)) {
+      try {
+        GlobalFonts.register(readFileSync(p), "PixelFont");
+        fontRegistered = true;
+        activeFontSource = `pixel:${p}`;
+      } catch (e) {
+        console.error("Pixel font registration failed:", p, e);
+      }
+    }
+  }
 
   // Prefer bundled font assets from node_modules for deterministic serverless deploys.
   const bundledCandidates = [
@@ -141,7 +157,7 @@ const PX_PER_HOUR  = GRID_H / HOURS.length;
 
 const DAY_NAMES   = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"];
 const MONTH_NAMES = ["Januari","Februari","Mars","April","Maj","Juni","Juli","Augusti","September","Oktober","November","December"];
-const FONT_STACK = "'DM Sans', 'Arial', 'Liberation Sans', 'DejaVu Sans', sans-serif";
+const FONT_STACK = "'PixelFont', 'DM Sans', 'Arial', 'Liberation Sans', 'DejaVu Sans', sans-serif";
 
 // ─── Calendar config from env vars ───────────────────────────────────────────
 interface CalConfig { id: string; name: string; color: string; }
@@ -249,6 +265,12 @@ function renderCalendar(
   cal1: CalConfig, events1: CalEvent[],
   cal2: CalConfig, events2: CalEvent[],
 ) {
+  // Prefer hard-edged text rendering where the backend supports these hints.
+  const ctxAny = ctx as any;
+  if ("antialias" in ctxAny) ctxAny.antialias = "none";
+  if ("patternQuality" in ctxAny) ctxAny.patternQuality = "nearest";
+  if ("quality" in ctxAny) ctxAny.quality = "nearest";
+
   const weekDays = getWeekDays(today);
   const todayStr = today.toDateString();
   const weekNum  = getISOWeek(today);
@@ -497,64 +519,13 @@ export async function GET(request: NextRequest) {
 
     const { data: rgba } = canvas.getContext("2d").getImageData(0, 0, W, H);
     const packed = new Uint8Array(W / 2 * H);
-
-    // Multicolor Floyd-Steinberg error diffusion across the six-color e-ink palette.
-    let errCurr = new Float32Array(W * 3);
-    let errNext = new Float32Array(W * 3);
-
     for (let y = 0; y < H; y++) {
-      errNext.fill(0);
-
-      for (let x = 0; x < W; x++) {
-        const src = (y * W + x) * 4;
-        const ep = x * 3;
-
-        const r = clampByte(rgba[src] + errCurr[ep]);
-        const g = clampByte(rgba[src + 1] + errCurr[ep + 1]);
-        const b = clampByte(rgba[src + 2] + errCurr[ep + 2]);
-
-        const q = nearestEinkColor(r, g, b);
-        const out = y * (W / 2) + (x >> 1);
-        if ((x & 1) === 0) {
-          packed[out] = q.idx << 4;
-        } else {
-          packed[out] |= q.idx;
-        }
-
-        const er = r - q.r;
-        const eg = g - q.g;
-        const eb = b - q.b;
-
-        if (x + 1 < W) {
-          const p = (x + 1) * 3;
-          errCurr[p] += er * (7 / 16);
-          errCurr[p + 1] += eg * (7 / 16);
-          errCurr[p + 2] += eb * (7 / 16);
-        }
-        if (y + 1 < H) {
-          if (x > 0) {
-            const p = (x - 1) * 3;
-            errNext[p] += er * (3 / 16);
-            errNext[p + 1] += eg * (3 / 16);
-            errNext[p + 2] += eb * (3 / 16);
-          }
-
-          errNext[ep] += er * (5 / 16);
-          errNext[ep + 1] += eg * (5 / 16);
-          errNext[ep + 2] += eb * (5 / 16);
-
-          if (x + 1 < W) {
-            const p = (x + 1) * 3;
-            errNext[p] += er * (1 / 16);
-            errNext[p + 1] += eg * (1 / 16);
-            errNext[p + 2] += eb * (1 / 16);
-          }
-        }
+      for (let x = 0; x < W; x += 2) {
+        const i0 = (y * W + x) * 4;
+        const q0 = nearestEinkColor(clampByte(rgba[i0]), clampByte(rgba[i0 + 1]), clampByte(rgba[i0 + 2]));
+        const q1 = nearestEinkColor(clampByte(rgba[i0 + 4]), clampByte(rgba[i0 + 5]), clampByte(rgba[i0 + 6]));
+        packed[y * (W / 2) + (x >> 1)] = (q0.idx << 4) | q1.idx;
       }
-
-      const tmp = errCurr;
-      errCurr = errNext;
-      errNext = tmp;
     }
 
     return new NextResponse(packed, {

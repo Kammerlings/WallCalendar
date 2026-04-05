@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.8",
+    "@fontsource/press-start-2p": "^5.2.7",
     "@fullcalendar/core": "^6.1.20",
     "@fullcalendar/daygrid": "^6.1.20",
     "@fullcalendar/interaction": "^6.1.20",
