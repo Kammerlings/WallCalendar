@@ -455,7 +455,8 @@ export async function GET(request: NextRequest) {
 
     if (debug) {
       const png = await canvas.encode("png");
-      return new NextResponse(png, {
+      const pngBytes = Uint8Array.from(png);
+      return new NextResponse(pngBytes, {
         headers: {
           "Content-Type": "image/png",
           "Cache-Control": "no-store",
