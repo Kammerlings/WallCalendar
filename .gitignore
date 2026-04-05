@@ -39,6 +39,12 @@ yarn-error.log*
 # Claude
 .claude
 
+# ESP32 secrets
+esp32/src/secrets.h
+
+# PlatformIO build artifacts
+esp32/.pio/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
