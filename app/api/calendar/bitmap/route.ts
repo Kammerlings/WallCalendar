@@ -3,6 +3,7 @@ import { google } from "googleapis";
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { fonts as pixelFonts, renderPixels } from "js-pixel-fonts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -160,6 +161,49 @@ function chooseEventTextColor(bg: string, fallback: string): string {
   return luminance > 0.68 ? "#000000" : "#ffffff";
 }
 
+const PIXEL_FONT = pixelFonts.sevenPlus;
+const HEADER_SCALE = 2;
+const BODY_SCALE = 1;
+
+function measurePixelText(text: string, scale: number): { width: number; height: number } {
+  const pixels = renderPixels(text, PIXEL_FONT);
+  const width = pixels.reduce((acc, row) => Math.max(acc, row.length), 0) * scale;
+  const height = pixels.length * scale;
+  return { width, height };
+}
+
+function drawPixelText(
+  ctx: Ctx,
+  text: string,
+  x: number,
+  y: number,
+  color: string,
+  scale: number,
+  align: "left" | "center" | "right" = "left",
+  baseline: "top" | "middle" | "bottom" = "top",
+) {
+  const pixels = renderPixels(text, PIXEL_FONT);
+  const width = pixels.reduce((acc, row) => Math.max(acc, row.length), 0) * scale;
+  const height = pixels.length * scale;
+  let drawX = x;
+  let drawY = y;
+
+  if (align === "center") drawX -= width / 2;
+  else if (align === "right") drawX -= width;
+
+  if (baseline === "middle") drawY -= height / 2;
+  else if (baseline === "bottom") drawY -= height;
+
+  ctx.fillStyle = color;
+  for (let rowIndex = 0; rowIndex < pixels.length; rowIndex++) {
+    const row = pixels[rowIndex];
+    for (let colIndex = 0; colIndex < row.length; colIndex++) {
+      if (!row[colIndex]) continue;
+      ctx.fillRect(drawX + colIndex * scale, drawY + rowIndex * scale, scale, scale);
+    }
+  }
+}
+
 // ─── Layout constants (must match app/calendar/page.tsx exactly) ──────────────
 const W = 800, H = 480;
 const HEADER_H     = 28;
@@ -175,7 +219,6 @@ const PX_PER_HOUR  = GRID_H / HOURS.length;
 
 const DAY_NAMES   = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"];
 const MONTH_NAMES = ["Januari","Februari","Mars","April","Maj","Juni","Juli","Augusti","September","Oktober","November","December"];
-const FONT_STACK = "'DM Sans', 'Arial', 'Liberation Sans', 'DejaVu Sans', sans-serif";
 
 // ─── Calendar config from env vars ───────────────────────────────────────────
 interface CalConfig { id: string; name: string; color: string; }
@@ -219,7 +262,7 @@ interface CalEvent {
 const EVENT_COLORS: Record<string, { bg: string; fg: string }> = {
   "1":  { bg: "#7986cb", fg: "#ffffff" }, "2":  { bg: "#33b679", fg: "#ffffff" },
   "3":  { bg: "#8e24aa", fg: "#ffffff" }, "4":  { bg: "#e67c73", fg: "#ffffff" },
-  "5":  { bg: "#f6bf26", fg: "#000000" }, "6":  { bg: "#f4511e", fg: "#ffffff" },
+  "5":  { bg: "#ffdd00", fg: "#000000" }, "6":  { bg: "#f4511e", fg: "#ffffff" },
   "7":  { bg: "#039be5", fg: "#ffffff" }, "8":  { bg: "#616161", fg: "#ffffff" },
   "9":  { bg: "#3f51b5", fg: "#ffffff" }, "10": { bg: "#0b8043", fg: "#ffffff" },
   "11": { bg: "#d60000", fg: "#ffffff" },
@@ -302,15 +345,10 @@ function renderCalendar(
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, W, HEADER_H);
 
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `bold 13px ${FONT_STACK}`;
-  ctx.textBaseline = "middle";
-  ctx.fillText(`Vecka ${weekNum}`, 10, HEADER_H / 2);
+  drawPixelText(ctx, `Vecka ${weekNum}`, 10, HEADER_H / 2, "#ffffff", HEADER_SCALE, "left", "middle");
 
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `bold 13px ${FONT_STACK}`;
   const monthStr = `${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}`;
-  ctx.fillText(monthStr, W - ctx.measureText(monthStr).width - 10, HEADER_H / 2);
+  drawPixelText(ctx, monthStr, W - 10, HEADER_H / 2, "#ffffff", HEADER_SCALE, "right", "middle");
 
   // ── Day columns
   for (let i = 0; i < 7; i++) {
@@ -332,26 +370,17 @@ function renderCalendar(
     const headerInnerW = DAY_COL_W - borderW;
     const headerCenterX = x + borderW + headerInnerW / 2;
     const dayName = DAY_NAMES[(day.getDay() + 6) % 7];
-    ctx.fillStyle = "#000000";
-    ctx.font = `bold 9px ${FONT_STACK}`;
-    ctx.textBaseline = "top";
-    ctx.fillText(dayName, headerCenterX - ctx.measureText(dayName).width / 2, HEADER_H + 3);
+    drawPixelText(ctx, dayName, headerCenterX, HEADER_H + 3, "#000000", BODY_SCALE, "center", "top");
 
     // Date number
     const dayNum = String(day.getDate());
-    ctx.fillStyle = "#000000";
-    ctx.font = `${isToday ? "bold" : "normal"} 16px ${FONT_STACK}`;
-    ctx.textBaseline = "bottom";
-    ctx.fillText(dayNum, headerCenterX - ctx.measureText(dayNum).width / 2, HEADER_H + DAY_HEADER_H - 2);
+    drawPixelText(ctx, dayNum, headerCenterX, HEADER_H + DAY_HEADER_H - 2, "#000000", HEADER_SCALE, "center", "bottom");
 
     // Week badge on Monday
     if (isMonday) {
       ctx.fillStyle = "#000000";
       ctx.fillRect(x + borderW, HEADER_H, 28, 14);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = `bold 11px ${FONT_STACK}`;
-      ctx.textBaseline = "top";
-      ctx.fillText(`V${getISOWeek(day)}`, x + borderW + 2, HEADER_H + 1);
+      drawPixelText(ctx, `V${getISOWeek(day)}`, x + borderW + 2, HEADER_H + 1, "#ffffff", BODY_SCALE, "left", "top");
     }
 
     // Bottom border of day header
@@ -374,14 +403,11 @@ function renderCalendar(
         const fg  = chooseEventTextColor(bg, ev.textColor ?? "#ffffff");
         ctx.fillStyle = bg;
         ctx.fillRect(x + borderW + 1, rowTop + 2, DAY_COL_W - borderW - 2, ALLDAY_ROW_H - 4);
-        ctx.fillStyle = fg;
-        ctx.font = `bold 8px ${FONT_STACK}`;
-        ctx.textBaseline = "middle";
         let title = ev.title;
         const suffix = allDay.length > 1 ? "…" : "";
-        while (title.length > 0 && ctx.measureText(title + suffix).width > DAY_COL_W - borderW - 6)
+        while (title.length > 0 && measurePixelText(title + suffix, BODY_SCALE).width > DAY_COL_W - borderW - 6)
           title = title.slice(0, -1);
-        ctx.fillText(title + suffix, x + borderW + 3, rowTop + ALLDAY_ROW_H / 2);
+        drawPixelText(ctx, title + suffix, x + borderW + 3, rowTop + ALLDAY_ROW_H / 2, fg, BODY_SCALE, "left", "middle");
       }
 
       // Row bottom border
@@ -400,10 +426,7 @@ function renderCalendar(
     const rowTop = HEADER_H + DAY_HEADER_H + ci * ALLDAY_ROW_H;
     ctx.fillStyle = cal.color;
     ctx.fillRect(0, rowTop, TIME_COL_W, ALLDAY_ROW_H);
-    ctx.fillStyle = chooseEventTextColor(cal.color, "#ffffff");
-    ctx.font = `bold 8px ${FONT_STACK}`;
-    ctx.textBaseline = "middle";
-    ctx.fillText(cal.name.slice(0, 3).toUpperCase(), 4, rowTop + ALLDAY_ROW_H / 2);
+    drawPixelText(ctx, cal.name.slice(0, 3).toUpperCase(), 4, rowTop + ALLDAY_ROW_H / 2, chooseEventTextColor(cal.color, "#ffffff"), BODY_SCALE, "left", "middle");
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, rowTop + ALLDAY_ROW_H - 1, W, 1);
   }
@@ -413,10 +436,7 @@ function renderCalendar(
     const y = GRID_TOP + hi * PX_PER_HOUR;
     ctx.fillStyle = "#dddddd";
     ctx.fillRect(TIME_COL_W, y, W - TIME_COL_W, 1);
-    ctx.fillStyle = "#000000";
-    ctx.font = `11px ${FONT_STACK}`;
-    ctx.textBaseline = "top";
-    ctx.fillText(`${String(HOURS[hi]).padStart(2, "0")}:00`, 2, y + 1);
+    drawPixelText(ctx, `${String(HOURS[hi]).padStart(2, "0")}:00`, 2, y + 1, "#000000", BODY_SCALE, "left", "top");
   }
 
   // ── Timed events
@@ -455,34 +475,29 @@ function renderCalendar(
         ctx.fillRect(evX, evTop, halfW - 1, evH);
 
         if (evH > 10) {
-          ctx.fillStyle = fg;
-          ctx.textBaseline = "top";
-
           const totalLines = Math.floor((evH - 2) / LINE_H);
           const titleLines = Math.max(1, totalLines - 1);
 
           // Draw title with line-wrapping, clamped to titleLines
           const words = ev.title.split(" ");
           let line = "", lineY = evTop + 2, drawn = 0;
-          ctx.font = `bold 9px ${FONT_STACK}`;
           for (const word of words) {
             const test = line ? `${line} ${word}` : word;
-            if (ctx.measureText(test).width > halfW - 4 && line) {
+            if (measurePixelText(test, BODY_SCALE).width > halfW - 4 && line) {
               if (drawn >= titleLines - 1) {
-                ctx.fillText(line + "…", evX + 1, lineY);
+                drawPixelText(ctx, line + "…", evX + 1, lineY, fg, BODY_SCALE, "left", "top");
                 line = ""; break;
               }
-              ctx.fillText(line, evX + 1, lineY);
+              drawPixelText(ctx, line, evX + 1, lineY, fg, BODY_SCALE, "left", "top");
               line = word; lineY += LINE_H; drawn++;
             } else { line = test; }
           }
-          if (line) ctx.fillText(line, evX + 1, lineY);
+          if (line) drawPixelText(ctx, line, evX + 1, lineY, fg, BODY_SCALE, "left", "top");
 
           // Start time on last line
           if (totalLines >= 2) {
-            ctx.font = `9px ${FONT_STACK}`;
             const timeStr = start.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
-            ctx.fillText(timeStr, evX + 1, evTop + evH - LINE_H);
+            drawPixelText(ctx, timeStr, evX + 1, evTop + evH - LINE_H, fg, BODY_SCALE, "left", "top");
           }
         }
 
