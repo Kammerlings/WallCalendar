@@ -198,7 +198,7 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) 
           [0, 0, 0, 0, 0],
         ]
       : [
-          [0, 1, 0, 1],
+          [1, 0, 0, 1],
           [0, 0, 0, 0],
         ];
 
