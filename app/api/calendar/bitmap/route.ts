@@ -186,7 +186,7 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) 
   if (!base) return;
 
   const isUpper = baseChar === baseChar.toUpperCase();
-  const width = Math.max(...base.pixels.map((row: number[]) => row.length), 5);
+  const width = Math.max(...base.pixels.map((row: number[]) => row.length));
   const accentRows = accent === "ring"
     ? [
         [0, 1, 1, 0],
@@ -198,7 +198,7 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) 
           [0, 0, 0, 0, 0],
         ]
       : [
-          [1, 0, 1, 0],
+          [0, 1, 0, 1],
           [0, 0, 0, 0],
         ];
 
