@@ -185,16 +185,22 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) 
   const base = (PIXEL_FONT.glyphs as Record<string, PixelGlyph>)[baseChar];
   if (!base) return;
 
+  const isUpper = baseChar === baseChar.toUpperCase();
   const width = Math.max(...base.pixels.map((row: number[]) => row.length), 5);
   const accentRows = accent === "ring"
     ? [
         [0, 1, 1, 0],
         [1, 0, 0, 1],
       ]
-    : [
-        [1, 0, 0, 1],
-        [0, 0, 0, 0],
-      ];
+    : isUpper
+      ? [
+          [1, 0, 0, 0, 1],
+          [0, 0, 0, 0, 0],
+        ]
+      : [
+          [1, 0, 1, 0],
+          [0, 0, 0, 0],
+        ];
 
   const padRow = (row: number[], shiftX = 0) => {
     if (row.length >= width) return row.slice(0, width);
@@ -223,11 +229,11 @@ function registerSwedishGlyphs() {
     if (!glyphs[target] && glyphs[base]) glyphs[target] = makeAccentGlyph(base, accent, offset) as PixelGlyph;
   };
 
-  add("ä", "a", "dots", -2);
+  add("ä", "a", "dots", 0);
   add("Ä", "A", "dots", -2);
-  add("ö", "o", "dots", -2);
+  add("ö", "o", "dots", 0);
   add("Ö", "O", "dots", -2);
-  add("å", "a", "ring", -2);
+  add("å", "a", "ring", 0);
   add("Å", "A", "ring", -2);
 }
 
