@@ -168,7 +168,7 @@ function chooseEventTextColor(bg: string, fallback: string): string {
 const PIXEL_FONT = pixelFonts.sevenPlus;
 const HEADER_SCALE = 2;
 const BODY_SCALE = 1;
-const DAY_SCALE = 2;
+const DAY_SCALE = 1.5;
 const HOUR_SCALE = 2;
 
 function cloneRows(rows: number[][]): number[][] {
@@ -188,25 +188,32 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) 
   const width = Math.max(...base.pixels.map((row: number[]) => row.length), 5);
   const accentRows = accent === "ring"
     ? [
-        [0, 1, 1, 1, 0],
-        [1, 0, 0, 0, 1],
+        [0, 1, 1, 0],
+        [1, 0, 0, 1],
       ]
     : [
-        [1, 0, 1, 0, 0],
-        [0, 0, 0, 0, 0],
+        [1, 0, 1, 0],
+        [0, 0, 0, 0],
       ];
 
-  const padRow = (row: number[]) => {
+  const padRow = (row: number[], shiftX = 0) => {
     if (row.length >= width) return row.slice(0, width);
     const left = Math.floor((width - row.length) / 2);
-    return [
+    const padded = [
       ...Array(left).fill(0),
       ...row,
       ...Array(width - left - row.length).fill(0),
     ];
+    if (shiftX === 0) return padded;
+    const shifted = Array(width).fill(0);
+    for (let i = 0; i < width; i++) {
+      const target = i + shiftX;
+      if (target >= 0 && target < width) shifted[target] = padded[i];
+    }
+    return shifted;
   };
 
-  const pixels: number[][] = [padRow(accentRows[0]), padRow(accentRows[1]), ...cloneRows(base.pixels)];
+  const pixels: number[][] = [padRow(accentRows[0], accent === "dots" ? -1 : 0), padRow(accentRows[1], accent === "dots" ? -1 : 0), ...cloneRows(base.pixels)];
   return makeGlyph(pixels, offset);
 }
 
@@ -217,11 +224,11 @@ function registerSwedishGlyphs() {
   };
 
   add("ä", "a", "dots");
-  add("Ä", "A", "dots", -1);
+  add("Ä", "A", "dots", -3);
   add("ö", "o", "dots");
-  add("Ö", "O", "dots", -1);
+  add("Ö", "O", "dots", -3);
   add("å", "a", "ring");
-  add("Å", "A", "ring", -1);
+  add("Å", "A", "ring", -3);
 }
 
 registerSwedishGlyphs();
