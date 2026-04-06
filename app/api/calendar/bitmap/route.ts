@@ -409,9 +409,37 @@ const PX_PER_HOUR  = GRID_H / HOURS.length;
 
 const DAY_NAMES   = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"];
 const MONTH_NAMES = ["Januari","Februari","Mars","April","Maj","Juni","Juli","Augusti","September","Oktober","November","December"];
+const CALENDAR_TIMEZONE = process.env.CALENDAR_TIMEZONE ?? "Europe/Stockholm";
 
 // ─── Calendar config from env vars ───────────────────────────────────────────
 interface CalConfig { id: string; name: string; color: string; }
+
+function getDateKeyInTimeZone(date: Date, timeZone = CALENDAR_TIMEZONE): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+}
+
+function getHourMinuteInTimeZone(date: Date, timeZone = CALENDAR_TIMEZONE): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+  const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+  return { hour, minute };
+}
 
 function getCalendars(): [CalConfig, CalConfig] {
   return [
@@ -465,6 +493,7 @@ async function fetchEvents(token: string, calendarId: string, from: Date, to: Da
   const res = await cal.events.list({
     calendarId, singleEvents: true, orderBy: "startTime",
     timeMin: from.toISOString(), timeMax: to.toISOString(),
+    timeZone: CALENDAR_TIMEZONE,
   });
   return (res.data.items ?? []).map(ev => {
     const ec = ev.colorId ? EVENT_COLORS[ev.colorId] : null;
@@ -494,7 +523,7 @@ function getISOWeek(date: Date): number {
 }
 
 function getAllDayEvents(day: Date, events: CalEvent[]): CalEvent[] {
-  const cur = new Date(day.toISOString().split("T")[0]);
+  const cur = new Date(`${getDateKeyInTimeZone(day)}T00:00:00Z`);
   return events.filter(ev => {
     if (!ev.allDay) return false;
     const s = new Date(ev.start.split("T")[0]);
@@ -504,8 +533,62 @@ function getAllDayEvents(day: Date, events: CalEvent[]): CalEvent[] {
 }
 
 function getTimedEvents(day: Date, events: CalEvent[]): CalEvent[] {
-  const ds = day.toISOString().split("T")[0];
-  return events.filter(ev => !ev.allDay && ev.start.split("T")[0] === ds);
+  const ds = getDateKeyInTimeZone(day);
+  return events.filter(ev => !ev.allDay && getDateKeyInTimeZone(new Date(ev.start)) === ds);
+}
+
+type TimedEventLayout = {
+  event: CalEvent;
+  startMin: number;
+  endMin: number;
+  col: number;
+  colCount: number;
+};
+
+function layoutTimedEvents(events: CalEvent[]): TimedEventLayout[] {
+  type Base = { event: CalEvent; startMin: number; endMin: number };
+  const base: Base[] = events
+    .map((event) => {
+      const start = new Date(event.start);
+      const end = new Date(event.end);
+      const startHm = getHourMinuteInTimeZone(start);
+      const endHm = getHourMinuteInTimeZone(end);
+      return {
+        event,
+        startMin: startHm.hour * 60 + startHm.minute,
+        endMin: endHm.hour * 60 + endHm.minute,
+      };
+    })
+    .filter((item) => item.endMin > item.startMin)
+    .sort((a, b) => (a.startMin - b.startMin) || (a.endMin - b.endMin));
+
+  const placed: Array<Base & { col: number }> = [];
+  const active: Array<{ col: number; endMin: number }> = [];
+
+  for (const item of base) {
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].endMin <= item.startMin) active.splice(i, 1);
+    }
+
+    let col = 0;
+    while (active.some((a) => a.col === col)) col++;
+
+    active.push({ col, endMin: item.endMin });
+    placed.push({ ...item, col });
+  }
+
+  return placed.map((item) => {
+    const overlapCount = placed.filter((other) =>
+      item.startMin < other.endMin && other.startMin < item.endMin
+    ).length;
+    return {
+      event: item.event,
+      startMin: item.startMin,
+      endMin: item.endMin,
+      col: item.col,
+      colCount: Math.max(1, overlapCount),
+    };
+  });
 }
 
 // ─── Canvas rendering ─────────────────────────────────────────────────────────
@@ -649,45 +732,54 @@ function renderCalendar(
     ];
 
     for (const [evList, evX, cal] of pairs) {
-      for (const ev of evList) {
-        const start    = new Date(ev.start);
-        const end      = new Date(ev.end);
-        const startMin = start.getHours() * 60 + start.getMinutes();
-        const endMin   = end.getHours()   * 60 + end.getMinutes();
+      const laidOut = layoutTimedEvents(evList);
+      for (const entry of laidOut) {
+        const ev = entry.event;
+        const start = new Date(ev.start);
+        const startMin = entry.startMin;
+        const endMin = entry.endMin;
         const gridMin  = HOUR_START * 60;
         const totalMin = (HOUR_END - HOUR_START) * 60;
         const topPct   = Math.max(0, Math.min(1, (startMin - gridMin) / totalMin));
         const botPct   = Math.max(0, Math.min(1, (endMin   - gridMin) / totalMin));
         if (botPct <= topPct) continue;
 
+        const laneGap = 1;
+        const laneCount = Math.max(1, entry.colCount);
+        const laneW = Math.max(8, Math.floor((halfW - 1 - (laneCount - 1) * laneGap) / laneCount));
+        const evLeft = evX + entry.col * (laneW + laneGap);
         const evTop = GRID_TOP + topPct * GRID_H;
         const evH   = Math.max(6, (botPct - topPct) * GRID_H);
         const bg    = ev.color ?? cal.color;
         const fg    = chooseEventTextColor(bg, ev.textColor ?? "#ffffff");
 
         ctx.fillStyle = bg;
-        ctx.fillRect(evX, evTop, halfW - 1, evH);
+        ctx.fillRect(evLeft, evTop, laneW, evH);
 
         if (evH > 10) {
           const totalLines = Math.floor((evH - 2) / LINE_H);
           const titleLines = Math.max(1, totalLines - 1);
 
           // Draw title with line-wrapping and hyphenation for long words.
-          const wrapped = wrapPixelText(ev.title, halfW - 4, BODY_SCALE, titleLines);
+          const wrapped = wrapPixelText(ev.title, laneW - 3, BODY_SCALE, titleLines);
           for (let li = 0; li < wrapped.length; li++) {
-            drawPixelText(ctx, wrapped[li], evX + 1, evTop + 2 + li * LINE_H, fg, BODY_SCALE, "left", "top");
+            drawPixelText(ctx, wrapped[li], evLeft + 1, evTop + 2 + li * LINE_H, fg, BODY_SCALE, "left", "top");
           }
 
           // Start time on last line
           if (totalLines >= 2) {
-            const timeStr = start.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
-            drawPixelText(ctx, timeStr, evX + 1, evTop + evH - LINE_H, fg, BODY_SCALE, "left", "top");
+            const timeStr = start.toLocaleTimeString("sv-SE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: CALENDAR_TIMEZONE,
+            });
+            drawPixelText(ctx, timeStr, evLeft + 1, evTop + evH - LINE_H, fg, BODY_SCALE, "left", "top");
           }
         }
 
         // Bottom separator
         ctx.fillStyle = "#ffffff";
-        ctx.fillRect(evX, evTop + evH - 1, halfW - 1, 1);
+        ctx.fillRect(evLeft, evTop + evH - 1, laneW, 1);
       }
     }
   }

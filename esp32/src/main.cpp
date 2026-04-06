@@ -68,8 +68,18 @@ static bool fetchAndDisplay() {
   client.setInsecure();
 
   HTTPClient http;
-  String url = String("https://") + VERCEL_HOST
-             + "/api/calendar/bitmap?key=" + BITMAP_API_KEY;
+  String host = String(VERCEL_HOST);
+  host.trim();
+  if (host.startsWith("https://")) {
+    host = host.substring(8);
+  } else if (host.startsWith("http://")) {
+    host = host.substring(7);
+  }
+  while (host.endsWith("/")) {
+    host.remove(host.length() - 1);
+  }
+
+  String url = String("https://") + host + "/api/calendar/bitmap?key=" + BITMAP_API_KEY;
   Serial.println("GET " + url);
 
   if (!http.begin(client, url)) { Serial.println("begin failed"); return false; }
