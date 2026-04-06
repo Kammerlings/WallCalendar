@@ -192,7 +192,7 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) 
         [1, 0, 0, 1],
       ]
     : [
-        [1, 0, 1, 0],
+        [1, 0, 0, 1],
         [0, 0, 0, 0],
       ];
 
@@ -213,7 +213,7 @@ function makeAccentGlyph(baseChar: string, accent: "dots" | "ring", offset = 0) 
     return shifted;
   };
 
-  const pixels: number[][] = [padRow(accentRows[0], accent === "dots" ? -1 : 0), padRow(accentRows[1], accent === "dots" ? -1 : 0), ...cloneRows(base.pixels)];
+  const pixels: number[][] = [padRow(accentRows[0]), padRow(accentRows[1]), ...cloneRows(base.pixels)];
   return makeGlyph(pixels, offset);
 }
 
@@ -223,12 +223,12 @@ function registerSwedishGlyphs() {
     if (!glyphs[target] && glyphs[base]) glyphs[target] = makeAccentGlyph(base, accent, offset) as PixelGlyph;
   };
 
-  add("ä", "a", "dots");
-  add("Ä", "A", "dots", -3);
-  add("ö", "o", "dots");
-  add("Ö", "O", "dots", -3);
-  add("å", "a", "ring");
-  add("Å", "A", "ring", -3);
+  add("ä", "a", "dots", -2);
+  add("Ä", "A", "dots", -2);
+  add("ö", "o", "dots", -2);
+  add("Ö", "O", "dots", -2);
+  add("å", "a", "ring", -2);
+  add("Å", "A", "ring", -2);
 }
 
 registerSwedishGlyphs();
