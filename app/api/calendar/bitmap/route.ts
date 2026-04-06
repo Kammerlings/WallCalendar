@@ -168,7 +168,7 @@ function chooseEventTextColor(bg: string, fallback: string): string {
 const PIXEL_FONT = pixelFonts.sevenPlus;
 const HEADER_SCALE = 2;
 const BODY_SCALE = 1;
-const DAY_SCALE = 1.5;
+const DAY_SCALE = 2;
 const HOUR_SCALE = 2;
 
 function cloneRows(rows: number[][]): number[][] {
@@ -562,9 +562,13 @@ function renderCalendar(
 
     // Week badge on Monday
     if (isMonday) {
+      const badgeText = `V${getISOWeek(day)}`;
+      const badgeMetrics = measurePixelText(badgeText, BODY_SCALE);
+      const badgeW = Math.ceil(badgeMetrics.width) + 2;
+      const badgeH = Math.ceil(badgeMetrics.height) + 2;
       ctx.fillStyle = "#000000";
-      ctx.fillRect(x + borderW, HEADER_H, 28, 14);
-      drawPixelText(ctx, `V${getISOWeek(day)}`, x + borderW + 2, HEADER_H + 1, "#ffffff", BODY_SCALE, "left", "top");
+      ctx.fillRect(x + borderW, HEADER_H, badgeW, badgeH);
+      drawPixelText(ctx, badgeText, x + borderW + 1, HEADER_H + 1, "#ffffff", BODY_SCALE, "left", "top");
     }
 
     // Bottom border of day header
