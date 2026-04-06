@@ -441,6 +441,14 @@ function getHourMinuteInTimeZone(date: Date, timeZone = CALENDAR_TIMEZONE): { ho
   return { hour, minute };
 }
 
+function formatTimeInZone(date: Date, timeZone = CALENDAR_TIMEZONE): string {
+  return date.toLocaleTimeString("sv-SE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+  });
+}
+
 function getCalendars(): [CalConfig, CalConfig] {
   return [
     { id: process.env.CALENDAR_1_ID ?? "primary",
@@ -768,11 +776,17 @@ function renderCalendar(
 
           // Start time on last line
           if (totalLines >= 2) {
-            const timeStr = start.toLocaleTimeString("sv-SE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: CALENDAR_TIMEZONE,
-            });
+            const end = new Date(ev.end);
+            const startTime = formatTimeInZone(start);
+            const endTime = formatTimeInZone(end);
+            const candidates = [
+              `${startTime}-${endTime}`,
+              `${startTime.slice(0, 2)}-${endTime}`,
+              `${startTime}-${endTime.slice(0, 2)}`,
+              startTime,
+            ];
+            const maxWidth = laneW - 3;
+            const timeStr = candidates.find((s) => measurePixelText(s, BODY_SCALE).width <= maxWidth) ?? startTime;
             drawPixelText(ctx, timeStr, evLeft + 1, evTop + evH - LINE_H, fg, BODY_SCALE, "left", "top");
           }
         }
